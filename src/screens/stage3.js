@@ -17,8 +17,6 @@ import tips from '../data/tips.json';
 
 const defaultDeps = { openMic, playNote, stopAll };
 
-const TONE_MS = 1000; // 目標の音を鳴らす長さ
-const GRAPH_SPAN = 7; // 目標の上下に見せる半音の数
 
 const TEXT = {
   intro: '声を ゆっくり 動かして、目標の 帯の 中で 止める 練習です。マイクを 使います',
@@ -90,11 +88,14 @@ export function renderStage3(root, params, deps = defaultDeps) {
   }
 
   function showTry() {
+    // 前の目標の音が鳴り残っていると、マイクが拾って誤判定するので止める
+    toneId += 1;
+    deps.stopAll();
     const mic = session.mic;
     const { targetMidi, startFrom } = glideTarget(ladder.level, tries, range);
     const tolerance = toleranceFor(ladder.level);
     const canvas = document.createElement('canvas');
-    const graph = createPitchGraph(canvas, { minMidi: targetMidi - GRAPH_SPAN, maxMidi: targetMidi + GRAPH_SPAN });
+    const graph = createPitchGraph(canvas, { minMidi: targetMidi - CONFIG.stage3.graphSpan, maxMidi: targetMidi + CONFIG.stage3.graphSpan });
     graph.setBands([{ midi: targetMidi, cents: tolerance }]);
 
     const hint = note(''); // 帯の外にいるときの「少し 高め」など
@@ -117,7 +118,7 @@ export function renderStage3(root, params, deps = defaultDeps) {
       toneOn = true;
       refreshButtons();
       try {
-        await deps.playNote(targetMidi, TONE_MS);
+        await deps.playNote(targetMidi, CONFIG.stage3.toneMs);
       } catch {
         // 鳴らせなくても練習は続けられる
       }

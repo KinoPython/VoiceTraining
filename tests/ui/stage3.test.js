@@ -159,6 +159,8 @@ describe('段3 すべらせて止める', () => {
     await settle();
     expect(mic.close).toHaveBeenCalled();
     expect(tone.stopAll).toHaveBeenCalled();
+    expect(loadState().history.at(-1)).toMatchObject({ stage: 3, tries: 1, successes: 0 });
+    expect(loadState().levels.s3).toBe(0);
   });
 
   test('マイクが止まったら案内と「もう一度 マイクを ひらく」が出る', async () => {
@@ -179,5 +181,18 @@ describe('段3 すべらせて止める', () => {
     await click(root, 'おわる');
     expect(loadState().history).toEqual([]);
     expect(root.textContent).toBe('ホーム');
+  });
+
+  test('結果画面で音を聞いて「つぎへ」を押すと、鳴り残りを止める', async () => {
+    const mic = makeMic();
+    const root = await openAndStart(mic);
+    await click(root, 'はじめる');
+    feed(mic, 10000, null);
+    await settle();
+    await click(root, '▶ 目標の 音を 聞く');
+    tone.stopAll.mockClear();
+    await click(root, 'つぎへ');
+    expect(tone.stopAll).toHaveBeenCalled();
+    expect(byLabel(root, 'はじめる').disabled).toBe(false);
   });
 });

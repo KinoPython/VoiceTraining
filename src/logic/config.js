@@ -7,7 +7,7 @@ export const CONFIG = {
   hold: { holdMs: 1000, gapMs: 150 },
   stage1: { startGap: 7, minGap: 1, maxGap: 12, trials: 20, toneMs: 600, pauseMs: 300, lastForResult: 6 },
   stage2: { comfortMs: 3000, comfortNeedMs: 1000, glideMs: 8000, lowPct: 5, highPct: 95, minWidth: 5 },
-  stage3: { tryMs: 10000 },
+  stage3: { tryMs: 10000, toneMs: 1000, graphSpan: 7 },
   stage4: { toneMs: 1500, waitMs: 500, tryMs: 6000 },
   stage5: { noteMs: 800, skipMs: 250, passRatio: 0.6 },
   session: { minutes: 10 },
