@@ -159,3 +159,108 @@ describe('録音', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake');
   });
 });
+
+describe('レビュー指摘の修正', () => {
+  test('onFrame の中で close() しても、その後コマが続かない', async () => {
+    const { mic } = await openOk();
+    const cb = vi.fn(() => mic.close());
+    mic.onFrame(cb);
+    raf.tick();
+    expect(raf.pendingCount()).toBe(0);
+    raf.tick();
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  test('準備の途中で失敗したら、開いたトラックを止める', async () => {
+    const stream = makeFakeStream();
+    installFakeMediaDevices(vi.fn(async () => stream));
+    fake.ctx.createAnalyser = () => { throw new Error('boom'); };
+    const result = await openMic();
+    expect(result).toEqual({ ok: false, reason: 'other' });
+    stream.tracks.forEach((t) => expect(t.stop).toHaveBeenCalled());
+  });
+
+  test('AudioContext は getUserMedia より前に作る', async () => {
+    let contextCreatedBeforeGum = false;
+    let created = 0;
+    globalThis.AudioContext = function F() { created += 1; return fake.ctx; };
+    installFakeMediaDevices(vi.fn(async () => {
+      contextCreatedBeforeGum = created > 0;
+      return makeFakeStream();
+    }));
+    await openMic();
+    expect(contextCreatedBeforeGum).toBe(true);
+  });
+
+  function installRecorder() {
+    const recorders = [];
+    class R {
+      static isTypeSupported() { return true; }
+      constructor() { this.state = 'inactive'; recorders.push(this); }
+      start() { this.state = 'recording'; }
+      stop() {
+        this.state = 'inactive';
+        if (this.ondataavailable) this.ondataavailable({ data: new Blob(['x']) });
+        if (this.onstop) this.onstop();
+      }
+    }
+    globalThis.MediaRecorder = R;
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    return recorders;
+  }
+
+  test('close() は録音中のレコーダーを止め、stopTake は null', async () => {
+    const recorders = installRecorder();
+    const { mic } = await openOk();
+    mic.startTake();
+    mic.close();
+    expect(recorders[0].state).toBe('inactive');
+    expect(await mic.stopTake()).toBeNull();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  test('録音中にもう一度 startTake すると前のは捨てる', async () => {
+    const recorders = installRecorder();
+    const { mic } = await openOk();
+    mic.startTake();
+    mic.startTake();
+    expect(recorders).toHaveLength(2);
+    expect(recorders[0].state).toBe('inactive');
+    expect(await mic.stopTake()).toBe('blob:fake');
+  });
+
+  test('MediaRecorder のコンストラクタが例外でも落ちない', async () => {
+    globalThis.MediaRecorder = function Bad() { throw new Error('nope'); };
+    const { mic } = await openOk();
+    expect(() => mic.startTake()).not.toThrow();
+    expect(await mic.stopTake()).toBeNull();
+  });
+
+  test('stop() が例外でも stopTake は null を返す', async () => {
+    const recorders = installRecorder();
+    const { mic } = await openOk();
+    mic.startTake();
+    recorders[0].stop = () => { throw new Error('bad state'); };
+    expect(await mic.stopTake()).toBeNull();
+  });
+
+  test('onClosed：画面を隠すと hidden、close() だと closed で一度だけ', async () => {
+    const a = await openOk();
+    const cbA = vi.fn();
+    a.mic.onClosed(cbA);
+    setVisibility('hidden');
+    a.mic.close();
+    expect(cbA).toHaveBeenCalledTimes(1);
+    expect(cbA).toHaveBeenCalledWith('hidden');
+
+    setVisibility('visible');
+    const b = await openOk();
+    const cbB = vi.fn();
+    b.mic.onClosed(cbB);
+    b.mic.close();
+    b.mic.close();
+    expect(cbB).toHaveBeenCalledTimes(1);
+    expect(cbB).toHaveBeenCalledWith('closed');
+  });
+});

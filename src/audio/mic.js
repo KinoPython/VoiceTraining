@@ -27,6 +27,7 @@ function createMic(stream, ctx) {
   const smoother = createSmoother();
 
   let frameCallback = null;
+  let closedCallback = null;
   let rafId = null;
   let closed = false;
   let recorder = null;
@@ -37,48 +38,78 @@ function createMic(stream, ctx) {
     analyser.getFloatTimeDomainData(buffer);
     const midi = smoother.push(detectPitch(buffer, ctx.sampleRate));
     frameCallback(midi, performance.now());
-    rafId = requestAnimationFrame(loop);
+    // 受け取った側が close() を呼んだら、次のコマは予約しない
+    if (!closed) rafId = requestAnimationFrame(loop);
+  }
+
+  // 録音を、結果を使わずに止める（途中で閉じたとき・録り直したとき用）
+  function discardRecorder() {
+    const current = recorder;
+    recorder = null;
+    if (!current) return;
+    current.ondataavailable = null;
+    current.onstop = null;
+    try {
+      if (current.state !== 'inactive') current.stop();
+    } catch {
+      // すでに止まっているなら何もしなくてよい
+    }
   }
 
   function startTake() {
-    const type = pickRecordType();
     if (typeof MediaRecorder === 'undefined' || closed) return;
+    discardRecorder(); // 録音中にもう一度呼ばれたら、前のものは捨てる
+    const type = pickRecordType();
     chunks = [];
-    recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-    recorder.start();
+    try {
+      recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.start();
+    } catch {
+      recorder = null; // 録音できない端末。録音なしで続ける
+    }
   }
 
   // 録った声はメモリの中だけ。聞き直したら close で捨てる
   function stopTake() {
-    if (!recorder) return Promise.resolve(null);
     const current = recorder;
+    if (!current || closed || current.state === 'inactive') {
+      recorder = null;
+      return Promise.resolve(null);
+    }
     recorder = null;
     return new Promise((resolve) => {
       current.onstop = () => {
+        if (closed) return resolve(null);
         const url = URL.createObjectURL(new Blob(chunks, { type: current.mimeType || pickRecordType() }));
         urls.push(url);
         resolve(url);
       };
-      current.stop();
+      try {
+        current.stop();
+      } catch {
+        resolve(null);
+      }
     });
   }
 
-  function close() {
+  function close(reason = 'closed') {
     if (closed) return;
     closed = true;
     document.removeEventListener('visibilitychange', onVisibility);
     if (rafId !== null) cancelAnimationFrame(rafId);
     rafId = null;
+    discardRecorder();
     stream.getTracks().forEach((t) => t.stop()); // マイク使用中の表示を消す
     source.disconnect();
     urls.forEach((u) => URL.revokeObjectURL(u));
     urls.length = 0;
+    if (closedCallback) closedCallback(reason);
   }
 
   // 画面を隠したままマイクが開きっぱなしにならないよう、自分で閉じる
   function onVisibility() {
-    if (document.visibilityState === 'hidden') close();
+    if (document.visibilityState === 'hidden') close('hidden');
   }
   document.addEventListener('visibilitychange', onVisibility);
 
@@ -87,9 +118,13 @@ function createMic(stream, ctx) {
       frameCallback = cb;
       if (rafId === null && !closed) rafId = requestAnimationFrame(loop);
     },
+    // 閉じたときに一度だけ呼ばれる。画面を隠して自動で閉じたときは reason が hidden
+    onClosed(cb) {
+      closedCallback = cb;
+    },
     startTake,
     stopTake,
-    close,
+    close: () => close('closed'),
   };
 }
 
@@ -98,17 +133,21 @@ export async function openMic() {
   if (!media || !media.getUserMedia || !(window.AudioContext || window.webkitAudioContext)) {
     return { ok: false, reason: 'unsupported' };
   }
+  let stream = null;
   try {
     // iPhone のマナーモードで音が消えないように（対応している端末だけ）
     if (navigator.audioSession) navigator.audioSession.type = 'play-and-record';
+    // タップの直後のうちに作る（許可ダイアログを待つ間にタップ扱いが切れるため）
+    const ctx = getAudioContext();
     // 声の高さが変わらないよう、自動補正はすべて切る
-    const stream = await media.getUserMedia({
+    stream = await media.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
-    const ctx = getAudioContext();
-    await ctx.resume();
+    if (ctx.state !== 'running') await ctx.resume();
     return { ok: true, mic: createMic(stream, ctx) };
   } catch (error) {
+    // 途中で失敗してもマイクを開けっぱなしにしない
+    if (stream) stream.getTracks().forEach((t) => t.stop());
     return { ok: false, reason: failureReason(error) };
   }
 }
