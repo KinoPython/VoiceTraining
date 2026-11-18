@@ -5,6 +5,7 @@ import { renderWelcome, guardWelcome } from './screens/welcome.js';
 import { renderSafety } from './screens/safety.js';
 import { renderWarmup } from './screens/warmup.js';
 import { renderStage1 } from './screens/stage1.js';
+import { renderStage2 } from './screens/stage2.js';
 import { button, heading } from './ui/components.js';
 
 // あとの作業で作る画面の仮。ホームのリンクが行き止まりにならないように置く
@@ -17,7 +18,8 @@ register('welcome', renderWelcome);
 register('safety', renderSafety);
 register('warmup', renderWarmup);
 register('stage1', (root, params) => renderStage1(root, params));
-for (const name of ['stage2', 'stage3', 'stage4', 'stage5', 'record', 'settings', 'article', 'learn']) {
+register('stage2', (root, params) => renderStage2(root, params));
+for (const name of ['stage3', 'stage4', 'stage5', 'record', 'settings', 'article', 'learn']) {
   register(name, placeholder);
 }
 setGuard(guardWelcome);

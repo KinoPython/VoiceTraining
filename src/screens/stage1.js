@@ -7,6 +7,7 @@ import { createLadder } from '../logic/ladder.js';
 import { gapForLevel, makeListenTrial, listenResult } from '../logic/listenTrial.js';
 import { gapLabel } from '../logic/notes.js';
 import { CONFIG } from '../logic/config.js';
+import { todayString } from '../logic/today.js';
 import { loadState, setLevel, addHistory } from '../storage/store.js';
 
 const defaultDeps = { playSequence, stopAll, rand: Math.random };
@@ -16,13 +17,6 @@ const SLOW_PAUSE_MS = 600; // 「ゆっくり 聞く」の音と音の間
 const WORD = { high: '高い', low: '低い' };
 const WHITE_PCS = [0, 2, 4, 5, 7, 9, 11];
 const isWhite = (midi) => WHITE_PCS.includes(((midi % 12) + 12) % 12);
-
-// 履歴に入れる日付。端末の「今日」（UTC ではなく）で YYYY-MM-DD にする
-function localDate() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
 
 // 2音の前後2半音を含む鍵盤を、端が白鍵になるよう外側へ広げて描く
 function keyboardFor(first, second) {
@@ -115,7 +109,7 @@ export function renderStage1(root, params, deps = defaultDeps) {
     if (answered() === 0) return go('home');
     const value = listenResult(gaps);
     setLevel('s1', ladder.level);
-    addHistory({ date: localDate(), stage: 1, tries: answered(), successes, value });
+    addHistory({ date: todayString(), stage: 1, tries: answered(), successes, value });
     showResult(value);
   }
 
