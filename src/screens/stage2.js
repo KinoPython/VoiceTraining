@@ -1,6 +1,7 @@
 // 段2 声の地図：楽な高さと、出せる範囲を測る
 import { go } from '../router.js';
 import { button, heading, note } from '../ui/components.js';
+import { tipNote } from '../ui/tipNote.js';
 import { renderKeyboard } from '../ui/keyboard.js';
 import { createPitchGraph } from '../ui/pitchGraph.js';
 import { createMicSession } from '../ui/practiceLoop.js';
@@ -62,6 +63,7 @@ export function renderStage2(root, params, deps = defaultDeps) {
   let stepIndex = 0;
   let comfort = null;
   let low = null;
+  let shownSteps = 0; // 手順の画面を出した回数（コツを順に変えるため）
   let recordToken = 0; // 録るたびに増やし、古い録音の続きを無視する
 
   const title = () => heading('声の地図');
@@ -92,6 +94,7 @@ export function renderStage2(root, params, deps = defaultDeps) {
       title(),
       note(`${stepIndex + 1} / ${STEPS.length}`),
       note(step.text),
+      ...tipNote('s2', shownSteps++),
       button('はじめる', () => record(step)),
     );
   }

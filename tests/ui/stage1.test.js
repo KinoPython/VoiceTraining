@@ -3,6 +3,7 @@ import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage1 } from '../../src/screens/stage1.js';
 import { findBanned } from '../../src/logic/words.js';
 import { loadState } from '../../src/storage/store.js';
+import tips from '../../src/data/tips.json';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const text = (root) => root.textContent;
@@ -146,5 +147,19 @@ describe('段1 聞き分け', () => {
     await click(root, 'つぎへ');
     expect(deps.stopAll.mock.calls.length).toBeGreaterThan(before);
     expect(text(root)).toContain('2 / 20');
+  });
+
+  test('答えたあとの画面にコツが出て、答えるたびに次のコツになる。答える前には出ない', async () => {
+    const root = await open(makeDeps());
+    expect(text(root)).not.toContain('💡');
+    await playOne(root);
+    expect(text(root)).toContain('💡 ' + tips.s1[0]);
+    expect(findBanned(text(root))).toEqual([]);
+    await click(root, 'つぎへ');
+    expect(text(root)).not.toContain('💡');
+    await playOne(root);
+    expect(text(root)).toContain('💡 ' + tips.s1[1]);
+    expect(text(root)).not.toContain(tips.s1[0]);
+    expect(findBanned(text(root))).toEqual([]);
   });
 });

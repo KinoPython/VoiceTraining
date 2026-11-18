@@ -3,6 +3,7 @@ import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage2 } from '../../src/screens/stage2.js';
 import { findBanned } from '../../src/logic/words.js';
 import { loadState } from '../../src/storage/store.js';
+import tips from '../../src/data/tips.json';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const byLabel = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent === label);
@@ -171,5 +172,22 @@ describe('段2 声の地図', () => {
     go('home');
     await settle();
     expect(mic.close).toHaveBeenCalled();
+  });
+
+  test('各手順の画面にコツが出て、手順が進むたび・やり直すたびに別のコツになる', async () => {
+    const mic = makeMic();
+    const root = await open(async () => ({ ok: true, mic }));
+    await click(root, 'マイクを ひらく');
+    expect(root.textContent).toContain('💡 ' + tips.s2[0]);
+    expect(findBanned(root.textContent)).toEqual([]);
+    await click(root, 'はじめる');
+    feed(mic, 3000, () => 57);
+    await settle();
+    expect(root.textContent).toContain('💡 ' + tips.s2[1]);
+    expect(findBanned(root.textContent)).toEqual([]);
+    await click(root, 'はじめる');
+    await click(root, 'やり直す');
+    expect(root.textContent).toContain('💡 ' + tips.s2[2]);
+    expect(root.textContent).not.toContain(tips.s2[1]);
   });
 });

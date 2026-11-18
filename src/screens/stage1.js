@@ -1,6 +1,7 @@
 // 段1 聞き分け：2つの音を聞いて、2つ目が高いか低いかを答える
 import { go } from '../router.js';
 import { button, heading, note } from '../ui/components.js';
+import { tipNote } from '../ui/tipNote.js';
 import { renderKeyboard } from '../ui/keyboard.js';
 import { playSequence, stopAll } from '../audio/tone.js';
 import { createLadder } from '../logic/ladder.js';
@@ -107,6 +108,7 @@ export function renderStage1(root, params, deps = defaultDeps) {
     root.replaceChildren(
       heading('聞き分け'),
       note(message),
+      ...tipNote('s1', answered() - 1), // 答えるたびに次のコツへ
       keyboardFor(trial.first, trial.second),
       button('ゆっくり 聞く', () => play(trialNotes(SLOW_TONE_MS), SLOW_PAUSE_MS)),
       button('つぎへ', () => {
