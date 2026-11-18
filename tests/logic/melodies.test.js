@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MELODIES, pickMelody, melodySegments, scoreMelody } from '../../src/logic/melodies.js';
+import { MELODIES, pickMelody, melodySegments, scoreMelody, noteVerdicts } from '../../src/logic/melodies.js';
 
 const byId = (id) => MELODIES.find((m) => m.id === id);
 
@@ -78,5 +78,38 @@ describe('scoreMelody', () => {
     expect(scoreMelody(sing((t, m) => (t < 800 ? m : null)), segs, 100)).toBeCloseTo(0.5, 1);
     expect(scoreMelody([], segs, 100)).toBe(0);
     expect(scoreMelody([{ t: 100, midi: 60 }], segs, 100)).toBe(0); // skip 窓の中だけ
+  });
+});
+
+describe('noteVerdicts', () => {
+  const segs = [
+    { midi: 60, startMs: 0, endMs: 800 },
+    { midi: 64, startMs: 800, endMs: 1600 },
+    { midi: 62, startMs: 1600, endMs: 2400 },
+  ];
+  // 音ごとの高さを関数で与えて、20ms ごとの読みを作る（null は声なし）
+  const sing = (fn) => {
+    const r = [];
+    for (let t = 0; t < 2400; t += 20) r.push({ t, midi: fn(Math.floor(t / 800)) });
+    return r;
+  };
+  it('合っていれば ok、高ければ high、低ければ low', () => {
+    const r = sing((i) => [60, 65.5, 61][i]);
+    expect(noteVerdicts(r, segs, 50).map((v) => v.verdict)).toEqual(['ok', 'high', 'low']);
+  });
+  it('声がなければ none', () => {
+    const r = sing((i) => (i === 1 ? null : [60, 0, 62][i]));
+    expect(noteVerdicts(r, segs, 50).map((v) => v.verdict)).toEqual(['ok', 'none', 'ok']);
+  });
+  it('1オクターブちがいは合っている扱い', () => {
+    const r = sing((i) => [72, 64, 62][i]);
+    expect(noteVerdicts(r, segs, 50)[0].verdict).toBe('ok');
+  });
+  it('出始めの skipMs 以内の外れは数えない（中央値で見る）', () => {
+    const r = sing(() => 60).map((x) => (x.t < 250 ? { ...x, midi: 50 } : x));
+    expect(noteVerdicts(r, [segs[0]], 50)[0].verdict).toBe('ok');
+  });
+  it('midi を一緒に返す', () => {
+    expect(noteVerdicts([], segs, 50).map((v) => v.midi)).toEqual([60, 64, 62]);
   });
 });
