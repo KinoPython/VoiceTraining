@@ -47,3 +47,10 @@ body {
 
 /* 線グラフ：CSS で大きさを固定する（固定しないと実サイズに引きずられて伸び続ける） */
 canvas.pitch-graph { display: block; width: 100%; height: 240px; }
+
+/* ボタン・カード・注意書き（src/ui/components.js） */
+.btn { display: block; width: 100%; margin: 8px 0; padding: 12px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--accent); border-radius: 10px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 8px 0; }
+.note { color: var(--muted); margin: 8px 0; }
+.safety { padding-left: 1.2em; }
+.links { margin-top: 24px; }

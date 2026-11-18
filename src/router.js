@@ -3,6 +3,7 @@ const routes = {};
 let rootEl = null;
 let currentDispose = null; // いまの画面の後始末（描画関数が関数を返したとき。マイクを止めるのに使う）
 let renderId = 0;
+let guard = null; // 画面を出す前の見張り。別の名前を返したら、そちらを出す
 
 export function register(name, render) {
   routes[name] = render; // 同じ名前なら置き換わる
@@ -13,7 +14,13 @@ export function resetRoutes() {
   for (const name of Object.keys(routes)) delete routes[name];
   rootEl = null;
   currentDispose = null;
+  guard = null;
   window.removeEventListener('hashchange', renderCurrent);
+}
+
+// check(名前) が別の名前を返すと、その画面に差し替える（例：初めての人は先に welcome）
+export function setGuard(check) {
+  guard = check;
 }
 
 export function go(name, params) {
@@ -24,7 +31,13 @@ export function go(name, params) {
 // "#stage1?x=1" を 名前とパラメータに分ける
 function parseHash() {
   const [rawName, query = ''] = location.hash.replace(/^#/, '').split('?');
-  const name = routes[rawName] ? rawName : 'home'; // 知らない名前はホーム
+  let name = routes[rawName] ? rawName : 'home'; // 知らない名前はホーム
+  const redirect = guard ? guard(name) : null;
+  if (redirect && routes[redirect]) {
+    name = redirect;
+    // URL も直す。直さないと、移った先から同じ名前へ go しても hashchange が起きない
+    history.replaceState(null, '', `#${name}`);
+  }
   return { name, params: new URLSearchParams(query) };
 }
 

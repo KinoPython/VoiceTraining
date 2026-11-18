@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { register, go, start, resetRoutes } from '../src/router.js';
+import { register, go, start, resetRoutes, setGuard } from '../src/router.js';
 
 // hashchange は非同期で届くので、描画が終わるまで少し待つ
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -42,6 +42,36 @@ describe('ルーター', () => {
     const home = vi.fn();
     register('home', home);
     location.hash = '#nazo';
+    await start(root);
+    expect(home).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ルーターの見張り（setGuard）', () => {
+  let root;
+  beforeEach(() => {
+    resetRoutes();
+    history.replaceState(null, '', location.pathname);
+    root = document.createElement('div');
+  });
+
+  test('見張りが別の名前を返したら、その画面を出す', async () => {
+    const home = vi.fn();
+    const welcome = vi.fn();
+    register('home', home);
+    register('welcome', welcome);
+    setGuard((name) => (name === 'welcome' ? null : 'welcome'));
+    location.hash = '#home';
+    await start(root);
+    expect(welcome).toHaveBeenCalledTimes(1);
+    expect(home).not.toHaveBeenCalled();
+    expect(location.hash).toBe('#welcome'); // 戻ったとき同じ画面に飛ばされないよう、URL も直す
+  });
+
+  test('null なら、そのまま出す', async () => {
+    const home = vi.fn();
+    register('home', home);
+    setGuard(() => null);
     await start(root);
     expect(home).toHaveBeenCalledTimes(1);
   });
