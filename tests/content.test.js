@@ -1,12 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import tips from '../src/data/tips.json';
-import posture from '../src/data/articles/posture.json';
-import breath from '../src/data/articles/breath.json';
-import relax from '../src/data/articles/relax.json';
-import pitchEar from '../src/data/articles/pitch-ear.json';
+import { ARTICLES as articles } from '../src/screens/article.js';
 import { findBanned } from '../src/logic/words.js';
-
-const articles = [posture, breath, relax, pitchEar];
 
 // 記事の画面に出る文を全部ならべる（出典の題名も画面に出る）
 function articleTexts(a) {
@@ -39,6 +34,9 @@ describe('読みもの', () => {
       expect(s.publisher).toBeTruthy();
     }
     expect(a.cautions.some((c) => c.includes('耳鼻咽喉科'))).toBe(true);
+    expect(a.cautions.some((c) => c.includes('医療・リハビリ・診断の 代わりでは ありません'))).toBe(true);
+    // 4週間の目安を書くときは、強い症状は待たずに受診する一文もそろえる
+    for (const c of a.cautions.filter((x) => x.includes('4週間'))) expect(c).toContain('待たずに');
     expect(a.body.length).toBeGreaterThan(0);
     expect(a.today.length).toBeGreaterThan(0);
     expect(a.updatedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
