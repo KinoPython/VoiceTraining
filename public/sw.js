@@ -5,8 +5,11 @@ const CACHE_NAME = CACHE_PREFIX + '__BUILD_VERSION__';
 const PRECACHE_LIST = '__PRECACHE_LIST__';
 
 self.addEventListener('install', (event) => {
-  // ビルドで出来た全ファイルを先に保存する（初めて開いたあと電波がなくても動かすため）
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_LIST)));
+  // ビルドで出来た全ファイルを先に保存する（初めて開いたあと電波がなくても動かすため）。
+  // cache: 'reload' で、ブラウザの一時保存（数分残る）を通さずに取りにいく。
+  // 通すと、古い index.html と新しい JS がまざって真っ白な画面になることがあるため
+  const requests = PRECACHE_LIST.map((url) => new Request(url, { cache: 'reload' }));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(requests)));
   self.skipWaiting();
 });
 

@@ -21,4 +21,9 @@ test('1回開いたあと電波を切って再読み込みしても、ホーム�
 
   await page.goto('/#stage1');
   await expect(page.getByRole('button', { name: /聞く/ })).toBeVisible();
+
+  // ライセンスの全文も、電波なしで読める（先に保存されている）
+  const licenses = await page.evaluate(async () => (await fetch('./licenses.txt')).text());
+  expect(licenses).toContain('Copyright 2018-2021 Ian Johnson');
+  expect(licenses).toContain('Copyright Fedor Indutny, 2017.');
 });

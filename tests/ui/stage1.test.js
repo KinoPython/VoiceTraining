@@ -127,4 +127,24 @@ describe('段1 聞き分け', () => {
     expect(text(root)).toContain('1 / 20');
     expect(byLabel(root, '▶ 聞く')).toBeTruthy();
   });
+
+  test('音が鳴らせなかった（playSequence が失敗した）ときも、答えのボタンが押せるようになる', async () => {
+    const deps = makeDeps();
+    deps.playSequence = vi.fn(() => Promise.reject(new Error('interrupted')));
+    const root = await open(deps);
+    await click(root, '▶ 聞く');
+    expect(byLabel(root, '高い ↑').disabled).toBe(false);
+    expect(byLabel(root, '低い ↓').disabled).toBe(false);
+  });
+
+  test('「ゆっくり 聞く」のあと「つぎへ」を押すと、鳴り残りを止めてから次の問へ', async () => {
+    const deps = makeDeps();
+    const root = await open(deps);
+    await playOne(root);
+    await click(root, 'ゆっくり 聞く');
+    const before = deps.stopAll.mock.calls.length;
+    await click(root, 'つぎへ');
+    expect(deps.stopAll.mock.calls.length).toBeGreaterThan(before);
+    expect(text(root)).toContain('2 / 20');
+  });
 });

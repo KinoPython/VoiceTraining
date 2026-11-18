@@ -36,10 +36,11 @@ export function runTry({ mic, graph, judge, tryMs, onUpdate = noop }) {
   return { promise, cancel: () => finish(false) };
 }
 
-// マイクの開け閉め（段3〜5共通）。
+// マイクの開け閉め（段2〜5共通）。
 // ・開いている最中にもう一度 open() しても無視する（連打対策）
 // ・close() のあとに遅れて開いたマイクは、すぐ閉じる
 // ・画面を隠して自動で閉じたときだけ onHidden を呼ぶ
+// ・release() はマイクだけ閉じる。close() とちがい、あとで open() し直せる
 export function createMicSession({ openMic, root, onReady, onHidden }) {
   let mic = null;
   let pending = false;
@@ -72,15 +73,22 @@ export function createMicSession({ openMic, root, onReady, onHidden }) {
     onReady(opened);
   }
 
+  // 先に mic を空にしてから閉じる（閉じた知らせで onHidden を呼ばないように）
+  function release() {
+    const current = mic;
+    mic = null;
+    if (current) current.close();
+  }
+
   function close() {
     closed = true;
-    if (mic) mic.close();
-    mic = null;
+    release();
   }
 
   return {
     open,
     close,
+    release,
     get mic() {
       return mic;
     },

@@ -2,8 +2,8 @@
 import { go } from '../router.js';
 import { button, heading, note } from '../ui/components.js';
 import { renderKeyboard } from '../ui/keyboard.js';
-import { renderMicGuide } from '../ui/micGuide.js';
 import { createPitchGraph } from '../ui/pitchGraph.js';
+import { createMicSession } from '../ui/practiceLoop.js';
 import { openMic } from '../audio/mic.js';
 import { comfortFrom, edgeFrom, makeRange } from '../logic/range.js';
 import { noteLabel } from '../logic/notes.js';
@@ -59,8 +59,6 @@ function resultKeyboard(range) {
 }
 
 export function renderStage2(root, params, deps = defaultDeps) {
-  let mic = null;
-  let disposed = false;
   let stepIndex = 0;
   let comfort = null;
   let low = null;
@@ -68,46 +66,28 @@ export function renderStage2(root, params, deps = defaultDeps) {
 
   const title = () => heading('声の地図');
 
-  function showIntro() {
-    root.replaceChildren(title(), note(TEXT.intro), button('マイクを ひらく', startMic));
-  }
-
-  // マイクを開く。閉じたとき（画面を隠したなど）の案内もここで登録する
-  async function connect() {
-    const result = await deps.openMic();
-    if (disposed) {
-      if (result.ok) result.mic.close();
-      return false;
-    }
-    if (!result.ok) {
-      renderMicGuide(root, result.reason);
-      return false;
-    }
-    mic = result.mic;
-    const thisMic = mic;
-    mic.onClosed((reason) => {
-      if (disposed || thisMic !== mic || reason !== 'hidden') return;
+  // マイクの開け閉めは段3〜5と同じ仕組みに任せる（連打で2つ開かないように）
+  const session = createMicSession({
+    openMic: (...args) => deps.openMic(...args),
+    root,
+    onReady: () => showStep(), // いまの手順を最初から
+    onHidden: () => {
       recordToken += 1; // 録っている途中なら止める
       showStopped();
-    });
-    return true;
-  }
+    },
+  });
 
-  async function startMic() {
-    if (await connect()) showStep();
+  function showIntro() {
+    root.replaceChildren(title(), note(TEXT.intro), button('マイクを ひらく', () => session.open()));
   }
 
   function showStopped() {
-    root.replaceChildren(title(), note(TEXT.stopped), button('もう一度 マイクを ひらく', reopen));
-  }
-
-  async function reopen() {
-    if (await connect()) showStep(); // いまの手順を最初から
+    root.replaceChildren(title(), note(TEXT.stopped), button('もう一度 マイクを ひらく', () => session.open()));
   }
 
   function showStep() {
     const step = STEPS[stepIndex];
-    mic.onFrame(() => {}); // 録る前の声は使わない
+    session.mic.onFrame(() => {}); // 録る前の声は使わない
     root.replaceChildren(
       title(),
       note(`${stepIndex + 1} / ${STEPS.length}`),
@@ -119,6 +99,7 @@ export function renderStage2(root, params, deps = defaultDeps) {
   // step.ms の間、声の高さを集める（長さは各コマの時刻で測る）
   function record(step) {
     const token = ++recordToken;
+    const mic = session.mic;
     const readings = [];
     const times = [];
     let startMs = null;
@@ -168,14 +149,14 @@ export function renderStage2(root, params, deps = defaultDeps) {
     const range = makeRange(comfort, low, high);
     saveRange({ comfort: range.comfort, low: range.low, high: range.high });
     addHistory({ date: todayString(), stage: 2, tries: 1, successes: 1, value: range.high - range.low });
-    mic.close(); // 測り終えたらマイクを止める
+    session.release(); // 測り終えたらマイクを止める（「やり直す」で開き直せる）
     root.replaceChildren(
       title(),
       note(`楽な 高さ：${noteLabel(range.comfort)}`),
       note(`出せる 幅：${noteLabel(range.low)}〜${noteLabel(range.high)}`),
       ...(range.widened ? [note(TEXT.widened)] : []),
       resultKeyboard(range),
-      button('やり直す', () => { stepIndex = 0; reopen(); }),
+      button('やり直す', () => { stepIndex = 0; session.open(); }),
       button('段3へ', () => go('stage3')),
       button('ホームへ', () => go('home')),
     );
@@ -183,8 +164,7 @@ export function renderStage2(root, params, deps = defaultDeps) {
 
   showIntro();
   return () => {
-    disposed = true;
     recordToken += 1;
-    if (mic) mic.close();
+    session.close();
   };
 }

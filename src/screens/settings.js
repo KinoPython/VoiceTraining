@@ -20,6 +20,22 @@ export function downloadFile(filename, text) {
 
 const defaultDeps = { download: downloadFile };
 
+// 使っているほかの人のプログラム。MIT License は「著作権の文と許可の文を添える」決まりなので、
+// 著作権の文はここに、全文は licenses.txt（電波がなくても読めるよう先に保存する）に置く
+const CREDITS = [
+  'pitchy（声の 高さの 計算） — MIT License。Copyright 2018-2021 Ian Johnson',
+  'fft.js（pitchy の 中で 使う 計算） — MIT License。Copyright Fedor Indutny, 2017.',
+];
+
+function licenseLink() {
+  const a = document.createElement('a');
+  a.href = './licenses.txt';
+  a.textContent = 'ライセンスの 全文を 見る';
+  const p = note('');
+  p.append(a);
+  return p;
+}
+
 function importInput(onText) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -54,7 +70,8 @@ export function renderSettings(root, params, deps = defaultDeps) {
       note('ホーム画面に 追加すると、記録が 消えにくく なります'),
       button('安全の こと', () => go('safety')),
       heading('クレジット'),
-      note('pitchy（声の 高さの 計算） — MIT License'),
+      ...CREDITS.map(note),
+      licenseLink(),
       button('ホームへ', () => go('home')),
     );
     input.hidden = true; // ボタンから開く（見た目をそろえるため）

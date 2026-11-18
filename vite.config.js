@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { makePrecacheList, makeVersion } from './scripts/precache.js';
+import { makePrecacheList, makeVersion, fillServiceWorker } from './scripts/precache.js';
 
 // dist の中のファイルを、サブフォルダも含めて「dist からの相対パス」で集める
 function listFiles(dir, base = '') {
@@ -10,7 +10,7 @@ function listFiles(dir, base = '') {
   );
 }
 
-// ビルド後に dist/sw.js の目印を、保存するファイル一覧と版の印に書きかえる。
+// ビルド後に dist/sw.js の目印を、保存するファイル一覧と版の印に書きかえる（目印が無ければビルドを止める）。
 // 版の印がキャッシュ名に入るので、新しく公開するたびに古い保存分が入れ替わる
 function serviceWorkerPlugin() {
   let outDir = 'dist';
@@ -23,9 +23,9 @@ function serviceWorkerPlugin() {
     writeBundle() {
       const files = listFiles(outDir);
       const swPath = join(outDir, 'sw.js');
-      const source = readFileSync(swPath, 'utf8')
-        .replace('__BUILD_VERSION__', makeVersion(files))
-        .replace("'__PRECACHE_LIST__'", JSON.stringify(makePrecacheList(files)));
+      // 版の印はファイルの中身からも作る（中身だけ変わったときも入れ替わるように）
+      const version = makeVersion(files, (name) => readFileSync(join(outDir, name)));
+      const source = fillServiceWorker(readFileSync(swPath, 'utf8'), { version, list: makePrecacheList(files) });
       writeFileSync(swPath, source);
     },
   };

@@ -68,6 +68,20 @@ describe('openMic の成功', () => {
     await openOk();
     expect(navigator.audioSession.type).toBe('play-and-record');
   });
+
+  test('閉じたら audioSession を playback に戻す（マナーモードでも音が出るまま、録音の表示は消す）', async () => {
+    navigator.audioSession = { type: 'auto' };
+    const { mic } = await openOk();
+    mic.close();
+    expect(navigator.audioSession.type).toBe('playback');
+  });
+
+  test('画面を隠して閉じたときも playback に戻す', async () => {
+    navigator.audioSession = { type: 'auto' };
+    await openOk();
+    setVisibility('hidden');
+    expect(navigator.audioSession.type).toBe('playback');
+  });
 });
 
 describe('close と画面を隠したとき', () => {

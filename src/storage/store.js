@@ -1,5 +1,7 @@
 // 記録の保存。スマホの中（localStorage）だけに置き、外には送らない。
 // iOS のプライベートモードなどで localStorage が例外を出しても、アプリは止めない。
+import { CONFIG } from '../logic/config.js';
+
 const KEY = 'koetore.v1';
 
 // 初めの形。毎回あたらしく作る（呼び出し側が書きかえても、元の形が変わらないように）
@@ -16,6 +18,22 @@ function initialState() {
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
+// 1回分の記録として使える形か（段の番号が 1〜5 の整数）。
+// こわれた記録がまじると、ホームやきろくの画面が開けなくなるため
+const isHistoryEntry = (e) => isObject(e) && Number.isInteger(e.stage) && e.stage >= 1 && e.stage <= 5;
+
+// レベルを 0〜最大に収める。数でなければ 0（はしごの計算がおかしくならないように）
+const clampLevel = (v) => (isNum(v) ? Math.min(Math.max(v, 0), CONFIG.ladder.maxLevel) : 0);
+
+function cleanLevels(stored) {
+  const levels = initialState().levels;
+  if (!isObject(stored)) return levels;
+  for (const key of Object.keys(levels)) {
+    if (key in stored) levels[key] = clampLevel(stored[key]);
+  }
+  return levels;
+}
+
 // 保存された中身に、足りないキーを初めの形から補う（古い版・一部だけの記録でも読めるように）
 function fillMissing(stored) {
   const base = initialState();
@@ -23,8 +41,8 @@ function fillMissing(stored) {
   return {
     version: 1,
     range: isObject(stored.range) ? stored.range : null,
-    levels: { ...base.levels, ...(isObject(stored.levels) ? stored.levels : {}) },
-    history: Array.isArray(stored.history) ? stored.history : [],
+    levels: cleanLevels(stored.levels),
+    history: Array.isArray(stored.history) ? stored.history.filter(isHistoryEntry) : [],
     welcomed: stored.welcomed === true,
   };
 }

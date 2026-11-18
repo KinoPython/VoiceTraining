@@ -126,6 +126,44 @@ describe('段2 声の地図', () => {
     expect(byLabel(root, 'はじめる')).toBeTruthy();
   });
 
+  test('「マイクを ひらく」を2回すばやく押しても、開くマイクは1つで、離れると閉じる', async () => {
+    const mics = [];
+    const openMic = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5)); // 許可を待つ間のふり
+      const mic = makeMic();
+      mics.push(mic);
+      return { ok: true, mic };
+    });
+    const root = await open(openMic);
+    const first = byLabel(root, 'マイクを ひらく');
+    first.click();
+    first.click();
+    await settle();
+    expect(openMic).toHaveBeenCalledTimes(1);
+    go('home');
+    await settle();
+    expect(mics.every((m) => m.close.mock.calls.length > 0)).toBe(true);
+  });
+
+  test('結果のあと「やり直す」でマイクを開き直し、1つ目の手順に戻る', async () => {
+    const mics = [makeMic(), makeMic()];
+    let n = 0;
+    const root = await open(async () => ({ ok: true, mic: mics[n++] }));
+    await click(root, 'マイクを ひらく');
+    await click(root, 'はじめる');
+    feed(mics[0], 3000, () => 57);
+    await click(root, 'はじめる');
+    feed(mics[0], 8000, (r) => 57 - 7 * r, 10000, 50);
+    await click(root, 'はじめる');
+    feed(mics[0], 8000, (r) => 57 + 6 * r, 20000, 50);
+    await settle();
+    expect(mics[0].close).toHaveBeenCalled();
+    await click(root, 'やり直す');
+    expect(n).toBe(2);
+    expect(root.textContent).toContain('1 / 3');
+    expect(root.textContent).toContain('いちばん 楽な 声で');
+  });
+
   test('ほかの画面に移るとマイクが閉じる', async () => {
     const mic = makeMic();
     const root = await open(async () => ({ ok: true, mic }));

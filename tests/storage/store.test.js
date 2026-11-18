@@ -105,3 +105,31 @@ describe('requestPersist', () => {
     expect(() => requestPersist()).not.toThrow();
   });
 });
+
+describe('こわれた中身の掃除', () => {
+  const base = { version: 1, range: null, levels: { s1: 0, s3: 0, s4: 0, s5: 0 }, history: [], welcomed: true };
+
+  test('stage が 1〜5 の数でない記録は捨てる', () => {
+    const good = entry(0);
+    localStorage.setItem(KEY, JSON.stringify({
+      ...base,
+      history: [null, 3, 'x', [], { stage: 9 }, { stage: '1' }, { stage: 0 }, { stage: 2.5 }, good],
+    }));
+    expect(loadState().history).toEqual([good]);
+  });
+
+  test('レベルは 0〜最大に収め、数でなければ 0', () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...base, levels: { s1: -3, s3: 99, s4: 'abc', s5: 4 } }));
+    expect(loadState().levels).toEqual({ s1: 0, s3: 10, s4: 0, s5: 4 });
+  });
+
+  test('history が [null] の記録も読み込めて、空の履歴になる', () => {
+    expect(importBackup(JSON.stringify({ ...base, history: [null] }))).toEqual({ ok: true });
+    expect(loadState().history).toEqual([]);
+  });
+
+  test('levels.s3 が 99 の記録を読み込むと、最大レベルに収まる', () => {
+    expect(importBackup(JSON.stringify({ ...base, levels: { ...base.levels, s3: 99 } }))).toEqual({ ok: true });
+    expect(loadState().levels.s3).toBe(10);
+  });
+});

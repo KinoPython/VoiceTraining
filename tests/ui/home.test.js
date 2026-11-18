@@ -68,4 +68,10 @@ describe('ホーム', () => {
       expect([...root.querySelectorAll('button')].some((b) => b.textContent === label)).toBe(true);
     }
   });
+
+  test('history に null がまじった記録でも、ホームが出る', async () => {
+    seed({ history: [null, did1] });
+    const root = await open();
+    expect(root.querySelector('.recommend')).toBeTruthy();
+  });
 });

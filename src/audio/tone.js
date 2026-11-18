@@ -4,19 +4,34 @@ import { midiToHz } from '../logic/notes.js';
 const ATTACK_SEC = 0.03; // 立ち上がり：いきなり鳴らすと「プツッ」とノイズが出るため
 const RELEASE_SEC = 0.08; // 消え際：同じ理由
 const PEAK_GAIN = 0.3; // 耳を痛めない控えめの音量
+const SAFETY_MS = 300; // 終わりの知らせ（onended）が来ないときに待つ、長さ＋この分
 
 let context = null;
 const playing = new Set(); // いま鳴っている（予約済みを含む）オシレーター
 let stopGeneration = 0; // stopAll のたびに増やし、playSequence の続きを打ち切る目印にする
 
+// iPhone の音の出し方（audioSession）を変える。対応していない端末では何もしない
+export function setAudioSessionType(type) {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = type;
+  } catch {
+    // 変えられなくても音は鳴らせる
+  }
+}
+
 export function getAudioContext() {
+  // マナーモードでも音が出るように。マイク使用中（play-and-record）のときは変えない
+  if (navigator.audioSession?.type === 'auto') setAudioSessionType('playback');
   if (!context) {
     // 古い iPhone は webkit 付きの名前しかない
     const Ctor = window.AudioContext || window.webkitAudioContext;
     context = new Ctor();
   }
-  // 画面操作の前は止まっていることがあるので、毎回起こす
-  if (context.state === 'suspended') context.resume();
+  // 止まっている（suspended）・電話などで中断された（interrupted）ときは、毎回起こす。
+  // 起こせなくても次に押したときにまた試すので、失敗は無視する
+  if (context.state !== 'running' && context.state !== 'closed') {
+    context.resume().catch(() => {});
+  }
   return context;
 }
 
@@ -45,11 +60,19 @@ export function playNote(midi, durationMs, whenMs = 0) {
   gain.connect(ctx.destination);
 
   return new Promise((resolve) => {
-    playing.add(osc);
-    osc.onended = () => {
+    let finished = false;
+    // 終わりの知らせと安全タイマーの、早いほうで1回だけ終える
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
       playing.delete(osc);
       resolve();
     };
+    // 中断中の iPhone では onended が来ないことがある。待ち続けて画面が止まらないように
+    const timer = setTimeout(finish, whenMs + durationMs + SAFETY_MS);
+    playing.add(osc);
+    osc.onended = finish;
     osc.start(startSec);
     osc.stop(endSec);
   });

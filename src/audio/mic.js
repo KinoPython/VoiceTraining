@@ -1,6 +1,6 @@
 // マイクを開き、声の高さを1コマごとに測る。声はスマホの中だけで処理し、外に送らない。
 import { detectPitch, createSmoother } from '../logic/pitch.js';
-import { getAudioContext } from './tone.js';
+import { getAudioContext, setAudioSessionType } from './tone.js';
 
 const FFT_SIZE = 2048;
 // iPhone は audio/mp4、そのほかは webm が録れる。使えるものを選ぶ
@@ -104,6 +104,8 @@ function createMic(stream, ctx) {
     source.disconnect();
     urls.forEach((u) => URL.revokeObjectURL(u));
     urls.length = 0;
+    // 録音用の音の出し方のままだと、iPhone の上の表示などが残る。音だけの形に戻す
+    setAudioSessionType('playback');
     if (closedCallback) closedCallback(reason);
   }
 
@@ -136,7 +138,7 @@ export async function openMic() {
   let stream = null;
   try {
     // iPhone のマナーモードで音が消えないように（対応している端末だけ）
-    if (navigator.audioSession) navigator.audioSession.type = 'play-and-record';
+    setAudioSessionType('play-and-record');
     // タップの直後のうちに作る（許可ダイアログを待つ間にタップ扱いが切れるため）
     const ctx = getAudioContext();
     // 声の高さが変わらないよう、自動補正はすべて切る

@@ -48,12 +48,23 @@ export function renderStage1(root, params, deps = defaultDeps) {
     trial = makeListenTrial(center, gapForLevel(ladder.level), deps.rand);
   }
 
-  // 音を鳴らし、終わったら onDone を呼ぶ（途中で止められたら呼ばない）
+  // 音を鳴らし、終わったら onDone を呼ぶ（途中で止められたら呼ばない）。
+  // 鳴らせなかったときも onDone を呼ぶ（答えのボタンが押せないまま止まらないように）
   async function play(notes, pause, onDone) {
     deps.stopAll();
     const token = ++playToken;
-    await deps.playSequence(notes, pause);
+    try {
+      await deps.playSequence(notes, pause);
+    } catch {
+      // 鳴らせなくても先へ進めるようにする
+    }
     if (!disposed && token === playToken) onDone?.();
+  }
+
+  // 鳴り残りを止めて、古い再生の終わりも無視する
+  function stopPlaying() {
+    playToken += 1;
+    deps.stopAll();
   }
 
   const trialNotes = (ms) => [
@@ -98,7 +109,12 @@ export function renderStage1(root, params, deps = defaultDeps) {
       note(message),
       keyboardFor(trial.first, trial.second),
       button('ゆっくり 聞く', () => play(trialNotes(SLOW_TONE_MS), SLOW_PAUSE_MS)),
-      button('つぎへ', () => (last ? finish() : (nextTrial(), showQuestion()))),
+      button('つぎへ', () => {
+        stopPlaying(); // 「ゆっくり 聞く」の音が次の問に重ならないように
+        if (last) return finish();
+        nextTrial();
+        showQuestion();
+      }),
       button('おわる', finish),
     );
   }

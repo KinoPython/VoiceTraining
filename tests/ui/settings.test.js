@@ -82,6 +82,16 @@ describe('せってい', () => {
     expect(root.textContent).toBe('段2');
   });
 
+  test('クレジットに pitchy と fft.js があり、ライセンスの全文へのリンクがある', () => {
+    const root = open();
+    expect(root.textContent).toContain('fft.js');
+    expect(root.textContent).toContain('Copyright 2018-2021 Ian Johnson');
+    expect(root.textContent).toContain('Copyright Fedor Indutny, 2017.');
+    const link = root.querySelector('a[href="./licenses.txt"]');
+    expect(link).toBeTruthy();
+    expect(link.textContent).toContain('ライセンスの 全文');
+  });
+
   test('禁止語と「連続」が無い', () => {
     const t = open().textContent;
     expect(findBanned(t)).toEqual([]);
