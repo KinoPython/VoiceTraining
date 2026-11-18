@@ -68,20 +68,20 @@ export function renderStage1(root, params, deps = defaultDeps) {
   ];
 
   function showQuestion() {
-    let heard = false;
     const high = button('高い ↑', () => answer('high'));
     const low = button('低い ↓', () => answer('low'));
     const setAnswerable = (on) => { high.disabled = !on; low.disabled = !on; };
     setAnswerable(false); // 聞く前と、鳴っているあいだは押せない
     const listen = () => {
       setAnswerable(false);
-      play(trialNotes(toneMs), pauseMs, () => { heard = true; setAnswerable(true); });
+      play(trialNotes(toneMs), pauseMs, () => { setAnswerable(true); listenButton.textContent = 'もう一度 聞く'; });
     };
+    const listenButton = button('▶ 聞く', listen);
     root.replaceChildren(
       heading('聞き分け'),
       note(`${answered() + 1} / ${trials}`),
       note('2つの 音を 鳴らします。2つ目は 高い？ 低い？'),
-      button(heard ? 'もう一度 聞く' : '▶ 聞く', listen),
+      listenButton,
       high,
       low,
       button('おわる', finish),

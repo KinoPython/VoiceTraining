@@ -75,4 +75,20 @@ describe('ルーターの見張り（setGuard）', () => {
     await start(root);
     expect(home).toHaveBeenCalledTimes(1);
   });
+
+  test('いまと同じ画面へ go すると、後始末のあとで描きなおす', async () => {
+    const dispose = vi.fn();
+    const stage1 = vi.fn(() => dispose);
+    register('home', () => {});
+    register('stage1', stage1);
+    location.hash = '#stage1';
+    await start(root);
+    await settle();
+    const before = stage1.mock.calls.length; // 先に変えた hash の hashchange が混ざることがあるので、基準を取る
+    const disposedBefore = dispose.mock.calls.length;
+    go('stage1');
+    await settle();
+    expect(dispose.mock.calls.length).toBe(disposedBefore + 1);
+    expect(stage1.mock.calls.length).toBe(before + 1);
+  });
 });

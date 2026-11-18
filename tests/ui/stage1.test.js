@@ -110,4 +110,21 @@ describe('段1 聞き分け', () => {
     await settle();
     expect(deps.stopAll).toHaveBeenCalled();
   });
+
+  test('聞いたあとは「もう一度 聞く」に変わる', async () => {
+    const root = await open(makeDeps());
+    expect(byLabel(root, '▶ 聞く')).toBeTruthy();
+    await click(root, '▶ 聞く');
+    expect(byLabel(root, 'もう一度 聞く')).toBeTruthy();
+    expect(byLabel(root, '▶ 聞く')).toBeUndefined();
+  });
+
+  test('結果の「もう一度」で、最初の問に戻る', async () => {
+    const root = await open(makeDeps());
+    await playOne(root);
+    await click(root, 'おわる');
+    await click(root, 'もう一度');
+    expect(text(root)).toContain('1 / 20');
+    expect(byLabel(root, '▶ 聞く')).toBeTruthy();
+  });
 });

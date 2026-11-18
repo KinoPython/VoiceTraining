@@ -25,7 +25,10 @@ export function setGuard(check) {
 
 export function go(name, params) {
   const query = params ? new URLSearchParams(params).toString() : '';
-  location.hash = query ? `#${name}?${query}` : `#${name}`;
+  const hash = query ? `#${name}?${query}` : `#${name}`;
+  // いまと同じ hash だと hashchange が起きないので、自分で描きなおす（例：結果画面の「もう一度」）
+  if (hash === location.hash) return renderCurrent();
+  location.hash = hash;
 }
 
 // "#stage1?x=1" を 名前とパラメータに分ける
