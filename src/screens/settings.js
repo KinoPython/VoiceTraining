@@ -4,14 +4,18 @@ import { button, heading, note } from '../ui/components.js';
 import { exportBackup, importBackup, requestPersist } from '../storage/store.js';
 import { todayString } from '../logic/today.js';
 
-// ファイルとして保存する。いったん見えないリンクを作ってクリックし、終わったら URL を捨てる
-function downloadFile(filename, text) {
+// ファイルとして保存する。iPhone の Safari は、画面に付いていないリンクや、
+// すぐ捨てた URL だとファイルを失うことがある。なので body に付けてクリックし、URL は少し待ってから捨てる
+export const REVOKE_DELAY_MS = 1000;
+export function downloadFile(filename, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
 const defaultDeps = { download: downloadFile };

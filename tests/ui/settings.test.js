@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { register, start, resetRoutes } from '../../src/router.js';
-import { renderSettings } from '../../src/screens/settings.js';
+import { renderSettings, downloadFile } from '../../src/screens/settings.js';
 import { exportBackup, loadState } from '../../src/storage/store.js';
 import { findBanned } from '../../src/logic/words.js';
 
@@ -86,5 +86,25 @@ describe('せってい', () => {
     const t = open().textContent;
     expect(findBanned(t)).toEqual([]);
     expect(t).not.toContain('連続');
+  });
+});
+
+describe('downloadFile', () => {
+  test('body に付けてクリックし、外して、URL は時間がたってから捨てる', () => {
+    vi.useFakeTimers();
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    let seen = null;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+      seen = { attached: document.body.contains(this), name: this.download, href: this.href };
+    });
+    downloadFile('koetore-backup-2026-11-18.json', '{}');
+    expect(seen).toEqual({ attached: true, name: 'koetore-backup-2026-11-18.json', href: 'blob:x' });
+    expect(document.querySelector('a[download]')).toBeNull();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x');
+    click.mockRestore();
+    vi.useRealTimers();
   });
 });
