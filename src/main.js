@@ -1,5 +1,5 @@
 import './styles.css';
-import { register, start, setGuard, go } from './router.js';
+import { register, start, setGuard } from './router.js';
 import { renderHome } from './screens/home.js';
 import { renderWelcome, guardWelcome } from './screens/welcome.js';
 import { renderSafety } from './screens/safety.js';
@@ -11,12 +11,7 @@ import { renderStage4 } from './screens/stage4.js';
 import { renderStage5 } from './screens/stage5.js';
 import { renderRecord } from './screens/record.js';
 import { renderSettings } from './screens/settings.js';
-import { button, heading } from './ui/components.js';
-
-// あとの作業で作る画面の仮。ホームのリンクが行き止まりにならないように置く
-function placeholder(root) {
-  root.append(heading('準備中'), button('ホームへ', () => go('home')));
-}
+import { renderLearn, renderArticle } from './screens/article.js';
 
 register('home', renderHome);
 register('welcome', renderWelcome);
@@ -29,9 +24,8 @@ register('stage4', (root, params) => renderStage4(root, params));
 register('stage5', (root, params) => renderStage5(root, params));
 register('record', renderRecord);
 register('settings', (root, params) => renderSettings(root, params));
-for (const name of ['article', 'learn']) {
-  register(name, placeholder);
-}
+register('learn', renderLearn);
+register('article', (root, params) => renderArticle(root, params));
 setGuard(guardWelcome);
 start(document.getElementById('app'));
 

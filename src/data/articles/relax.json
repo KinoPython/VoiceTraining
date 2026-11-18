@@ -1,0 +1,40 @@
+{
+  "id": "relax",
+  "title": "のどの力みを 抜く",
+  "summary": "高い 声ほど 力みやすい ものです。力に 気づいて ゆるめる ことと、のどを うるおす ことが 目安です。",
+  "body": [
+    "歌う 人の 声の 準備を 調べた 研究では、ある 研究で、参加者が 顔や のどの 力みに 前より 気づく ように なったと 報告されて います。力みは、まず 「気づく」ことから 始まる ようです。",
+    "のどの 表面が かわくと、声を 出すのに 力が いりやすく なる ことが、動物の 組織を 使った 実験などで 調べられて います。口で 息を する ことや 乾いた 空気も、かわきの 原因に なると いわれて います。ただ、人での 研究は 人数が 少なく、結果も そろって いません。",
+    "そこで この アプリでは、水を 少しずつ 飲む、のどを 休める、力が 入った ことに 気づいたら ゆるめる、といった やさしい 工夫を おすすめします。"
+  ],
+  "today": [
+    "歌う 前に、あごを 軽く ゆらして 力を 抜く",
+    "小さな 声の ハミングで、のどが 楽な 高さを 探す",
+    "高い 音の ときは、声を 小さめに して 力みを 減らす",
+    "水や 白湯を 少しずつ 飲む。長く 歌ったら のどを 休める"
+  ],
+  "cautions": [
+    "痛い・苦しいと 感じたら、すぐに やめて 休みましょう。無理に 高い 声を 出さないで ください。",
+    "声がれが 続くとき（目安として 4週間ほど）や、のどの 痛みが 続くときは、耳鼻咽喉科で 相談してください。",
+    "この アプリは、医療・リハビリ・診断の 代わりでは ありません。",
+    "ここに 書いた ことは、研究にもとづく 目安で、すべての 人に 当てはまる とは かぎりません。"
+  ],
+  "sources": [
+    {
+      "title": "Mapping the characteristics of training for vocal conditioning of singers: a scoping review",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13330938/",
+      "publisher": "CoDAS 2026（Carvalho ほか）"
+    },
+    {
+      "title": "Vocal Fold Surface Hydration: A review",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC2810851/",
+      "publisher": "Journal of Voice 2008（Leydon ほか）"
+    },
+    {
+      "title": "Identifying Concomitant Health Conditions in Individuals with Chronic Voice Problems",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7384965/",
+      "publisher": "Journal of Voice 2020（Lenell ほか）"
+    }
+  ],
+  "updatedOn": "2026-11-18"
+}
