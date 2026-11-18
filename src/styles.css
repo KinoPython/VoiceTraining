@@ -1,0 +1,36 @@
+/* 色はすべてここのトークンから使う（明るい色が標準、暗い設定の端末では暗い色） */
+:root {
+  --bg: #f6f4ef;
+  --ink: #2b2a33;
+  --muted: #6b6975;
+  --accent: #5b6cf0;
+  --band: #e4e6fb;
+  --band-ok: #cfeedd;
+  --line: #d9d6cd;
+  --card: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1b22;
+    --ink: #ecebf2;
+    --muted: #a3a1b0;
+    --accent: #8f9bff;
+    --band: #2c2f4d;
+    --band-ok: #1f4a36;
+    --line: #3a3947;
+    --card: #25252f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  line-height: 1.7;
+}
+
+.screen { max-width: 640px; margin: 0 auto; padding: 16px; }
