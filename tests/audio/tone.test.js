@@ -247,6 +247,51 @@ describe('スピーカーを借りる（マイク使用中のお手本を下の�
     expect(navigator.audioSession.type).toBe('play-and-record');
   });
 
+  test('借りるたびに playback にする（借り中に openMic が play-and-record を書いても、次の音は下のスピーカー）', async () => {
+    micOpen();
+    const giveA = tone.borrowSpeaker();
+    navigator.audioSession.type = 'play-and-record'; // 借り中に openMic が書き換えた
+    const giveB = tone.borrowSpeaker();
+    expect(navigator.audioSession.type).toBe('playback');
+    giveA();
+    giveB();
+  });
+
+  test('whenSpeakerRestored：何も借りていなければすぐ resolve する', async () => {
+    micOpen();
+    let done = false;
+    tone.whenSpeakerRestored().then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done).toBe(true);
+  });
+
+  test('whenSpeakerRestored：借りている間と戻す予定の間は待ち、戻した時に resolve する', async () => {
+    micOpen();
+    const give = tone.borrowSpeaker();
+    let done = false;
+    tone.whenSpeakerRestored().then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(done).toBe(false); // まだ借りている
+    give();
+    await vi.advanceTimersByTimeAsync(199);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done).toBe(true);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('whenSpeakerRestored：待っている間にマイクが閉じたら resolve する', async () => {
+    micOpen();
+    const give = tone.borrowSpeaker();
+    give();
+    let done = false;
+    tone.whenSpeakerRestored().then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(50);
+    tone.setMicActive(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done).toBe(true);
+  });
+
   test('navigator.audioSession が無くても例外にならない', async () => {
     delete navigator.audioSession;
     tone.setMicActive(true);

@@ -19,6 +19,7 @@ const defaultDeps = {
   openMic,
   playNote,
   stopAll,
+  borrowSpeaker,
   // お手本のあとの「待ち」。この間は判定しない
   wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   rand: Math.random,
@@ -163,7 +164,7 @@ export function renderStage4(root, params, deps = defaultDeps) {
       const mine = d.createAudio(takeUrl);
       audio = mine;
       // 聞き直しの音も下のスピーカーから。終わり・止めた・失敗のどれでも返す
-      const give = borrowSpeaker(); // 返す関数は何度呼んでも1回分だけ
+      const give = d.borrowSpeaker(); // 返す関数は何度呼んでも1回分だけ
       giveBackSpeaker = give;
       mine.onended = give;
       mine.onpause = give;

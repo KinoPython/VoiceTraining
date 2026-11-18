@@ -29,6 +29,7 @@ function feed(mic, ms, midi, t0 = 0, step = 20) {
 let tone;
 let waiter;
 let audios;
+let rejectPlay = null; // テストが差しこむと、play() の代わりに呼ばれる
 async function open(mic) {
   resetRoutes();
   history.replaceState(null, '', location.pathname);
@@ -44,7 +45,7 @@ async function open(mic) {
     ...tone,
     wait: waiter.wait,
     rand: () => 0.5,
-    createAudio: (url) => { const a = { url, play: vi.fn(() => Promise.resolve()), pause: vi.fn(), onended: null }; audios.push(a); return a; },
+    createAudio: (url) => { const a = { url, play: vi.fn(() => (rejectPlay ? rejectPlay() : Promise.resolve())), pause: vi.fn(), onended: null }; audios.push(a); return a; },
   };
   register('stage4', (root, params) => renderStage4(root, params, deps));
   register('stage2', (root) => { root.textContent = '段2'; });
@@ -72,6 +73,7 @@ async function beginTry(root) {
 describe('段4 1音合わせ', () => {
   afterEach(() => {
     delete navigator.audioSession;
+    rejectPlay = null;
     tone2.setMicActive(false);
   });
   beforeEach(() => {
@@ -190,9 +192,11 @@ describe('段4 1音合わせ', () => {
     await beginTry(root);
     feed(mic, 1000, TARGET);
     await settle();
-    const realCreate = audios.push.bind(audios);
-    audios.push = (a) => { a.play = vi.fn(() => Promise.reject(new Error('NotAllowed'))); return realCreate(a); };
+    // play() が断られる瞬間に、すでに playback へ切りかわっていること（借りていなければここで失敗する）
+    const seen = [];
+    rejectPlay = () => { seen.push(navigator.audioSession.type); return Promise.reject(new Error('NotAllowed')); };
     await click(root, '自分の 声');
+    expect(seen).toEqual(['playback']);
     await new Promise((resolve) => setTimeout(resolve, 250));
     expect(navigator.audioSession.type).toBe('play-and-record');
   });

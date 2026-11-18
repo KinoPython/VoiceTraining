@@ -4,7 +4,7 @@ import { button, heading, note } from '../ui/components.js';
 import { createPitchGraph } from '../ui/pitchGraph.js';
 import { createMicSession, runTry } from '../ui/practiceLoop.js';
 import { openMic } from '../audio/mic.js';
-import { playNote, stopAll } from '../audio/tone.js';
+import { playNote, stopAll, whenSpeakerRestored } from '../audio/tone.js';
 import { createHoldJudge } from '../logic/hold.js';
 import { glideTarget, toleranceFor } from '../logic/targets.js';
 import { createLadder } from '../logic/ladder.js';
@@ -15,7 +15,7 @@ import { loadState, setLevel, addHistory } from '../storage/store.js';
 import { MAP_FIRST_HINT } from '../data/copy.js';
 import { tipNote } from '../ui/tipNote.js';
 
-const defaultDeps = { openMic, playNote, stopAll };
+const defaultDeps = { openMic, playNote, stopAll, whenSpeakerRestored };
 
 
 const TEXT = {
@@ -116,6 +116,9 @@ export function renderStage3(root, params, deps = defaultDeps) {
       } catch {
         // 鳴らせなくても練習は続けられる
       }
+      if (myTone !== toneId || disposed) return;
+      // 歌う判定は play-and-record に戻ってから。戻るまで「はじめる」を押せないままにする
+      await (deps.whenSpeakerRestored ?? whenSpeakerRestored)();
       if (myTone !== toneId || disposed) return;
       toneOn = false;
       refreshButtons();

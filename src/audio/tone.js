@@ -26,19 +26,34 @@ export function setAudioSessionType(type) {
 let micActive = false; // マイクが開いているか（mic.js が知らせる）
 let borrowCount = 0; // いま借りている数（鳴っている音・聞き直しの数）
 let restoreTimer = null;
+let restoreWaiters = []; // whenSpeakerRestored を待っている人の resolve
+
+function notifyRestored() {
+  const waiters = restoreWaiters;
+  restoreWaiters = [];
+  waiters.forEach((resolve) => resolve());
+}
 
 export function setMicActive(active) {
   micActive = active;
+  // マイクが閉じたら、もう戻さない。待っている人を待たせ続けない
+  if (!active) notifyRestored();
+}
+
+// スピーカーを借りている間と、戻す予定の間は待ち、戻った（または戻さないと決まった）ら resolve する。
+// 歌う判定は play-and-record に戻ってから始めるために使う
+export function whenSpeakerRestored() {
+  if (borrowCount === 0 && restoreTimer === null) return Promise.resolve();
+  return new Promise((resolve) => restoreWaiters.push(resolve));
 }
 
 // 借りる。返す関数を返す（2回呼んでも1回分だけ返す。他の借りを返してしまわないため）
 export function borrowSpeaker() {
   borrowCount += 1;
-  if (borrowCount === 1) {
-    clearTimeout(restoreTimer); // 戻す予定があれば取り消す（続けて鳴らすとき）
-    restoreTimer = null;
-    setAudioSessionType('playback');
-  }
+  clearTimeout(restoreTimer); // 戻す予定があれば取り消す（続けて鳴らすとき）
+  restoreTimer = null;
+  // 借りている間に openMic が play-and-record を書いても、次の音が耳元に戻らないよう毎回指定する
+  setAudioSessionType('playback');
   let returned = false;
   return () => {
     if (returned) return;
@@ -50,6 +65,7 @@ export function borrowSpeaker() {
       restoreTimer = null;
       // 待つ間に誰かが借りた・マイクが閉じた場合は戻さない
       if (borrowCount === 0 && micActive) setAudioSessionType('play-and-record');
+      notifyRestored();
     }, RELEASE_DELAY_MS);
   };
 }

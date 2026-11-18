@@ -1,9 +1,10 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { register, start, resetRoutes } from '../../src/router.js';
 import { renderStage3 } from '../../src/screens/stage3.js';
 import { findBanned } from '../../src/logic/words.js';
 import tips from '../../src/data/tips.json';
 import { loadState, saveRange } from '../../src/storage/store.js';
+import * as realTone from '../../src/audio/tone.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const byLabel = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent === label);
@@ -60,10 +61,41 @@ async function openAndStart(mic) {
 }
 
 describe('段3 すべらせて止める', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    delete navigator.audioSession;
+    realTone.setMicActive(false);
+  });
   beforeEach(() => {
     localStorage.clear();
     saveRange({ comfort: 55, low: 50, high: 60 });
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  });
+
+  test('お手本が終わっても、スピーカーが play-and-record に戻る（200ms 後）まで「はじめる」は押せない', async () => {
+    navigator.audioSession = { type: 'play-and-record' };
+    realTone.setMicActive(true);
+    const mic = makeMic();
+    let giveBack;
+    const root = await open(mic, {
+      // 本物の借りる仕組みを使う playNote の代わり
+      playNote: vi.fn(() => new Promise((resolve) => {
+        const give = realTone.borrowSpeaker();
+        giveBack = () => { give(); resolve(); };
+      })),
+    });
+    await click(root, 'マイクを ひらく');
+    vi.useFakeTimers();
+    byLabel(root, '▶ 目標の 音を 聞く').click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(byLabel(root, 'はじめる').disabled).toBe(true);
+    giveBack(); // お手本が鳴り終わった
+    await vi.advanceTimersByTimeAsync(199);
+    expect(byLabel(root, 'はじめる').disabled).toBe(true);
+    expect(navigator.audioSession.type).toBe('playback');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+    expect(byLabel(root, 'はじめる').disabled).toBe(false);
   });
 
   test('帯の中の声を1秒流すと「できた！」になり、成功が1つ増える', async () => {
