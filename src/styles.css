@@ -44,3 +44,6 @@ body {
 .keyboard .kb-b { fill: var(--band-ok); stroke: var(--accent); stroke-width: 2; }
 .keyboard .kb-range { fill: var(--band); }
 .keyboard .kb-comfort { fill: var(--band-ok); }
+
+/* 線グラフ：CSS で大きさを固定する（固定しないと実サイズに引きずられて伸び続ける） */
+canvas.pitch-graph { display: block; width: 100%; height: 240px; }

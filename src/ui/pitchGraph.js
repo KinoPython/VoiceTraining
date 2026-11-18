@@ -17,7 +17,7 @@ function readColors() {
   return {
     band: get('--band', '#e4e6fb'),
     bandOk: get('--band-ok', '#cfeedd'),
-    line: get('--line', '#d9d6cd'),
+    voice: get('--accent', '#5b6cf0'),
     muted: get('--muted', '#6b6975'),
   };
 }
@@ -25,9 +25,9 @@ function readColors() {
 // iPhone などの高精細画面でにじまないよう、実サイズ = CSS サイズ × dpr にする
 function fitCanvas(canvas, ctx) {
   const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  const width = rect.width || canvas.clientWidth || 300;
-  const height = rect.height || canvas.clientHeight || 150;
+  // CSS の大きさ（clientWidth/Height）で測る。実サイズ(bitmap)で測ると大きさが雪だるま式に増えるため
+  const width = canvas.clientWidth || 300;
+  const height = canvas.clientHeight || 150;
   const pxW = Math.round(width * dpr);
   const pxH = Math.round(height * dpr);
   // サイズを代入すると中身が消えるので、変わったときだけ代入する
@@ -42,6 +42,8 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
   let bands = [];
   let ok = false;
   let nowMs = 0;
+  // 大きさを CSS で固定するための印（styles.css の canvas.pitch-graph）
+  canvas.classList.add('pitch-graph');
 
   function xOf(t, width) {
     return ((t - (nowMs - windowMs)) / windowMs) * width;
@@ -57,7 +59,8 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
       ctx.fillStyle = colors.muted;
       ctx.fillRect(0, y - 0.5, width, 1);
       ctx.globalAlpha = 1;
-      ctx.fillText(noteLabel(m), 4, y - 3);
+      // 一番上のドでも文字が絵の外に出ないよう、最低でも文字の高さ分は下げる
+      ctx.fillText(noteLabel(m), 4, Math.max(y - 3, 11));
     }
   }
 
@@ -75,7 +78,7 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
   }
 
   function drawVoice(ctx, colors, width, height) {
-    ctx.strokeStyle = colors.line;
+    ctx.strokeStyle = colors.voice;
     ctx.lineWidth = VOICE_LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';

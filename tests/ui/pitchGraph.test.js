@@ -31,20 +31,40 @@ describe('createPitchGraph', () => {
     });
     const canvas = document.createElement('canvas');
     canvas.getContext = () => ctx;
-    canvas.getBoundingClientRect = () => ({ width: cssW, height: cssH });
+    Object.defineProperty(canvas, 'clientWidth', { value: cssW });
+    Object.defineProperty(canvas, 'clientHeight', { value: cssH });
     return { canvas, calls };
   }
 
   it('devicePixelRatio 倍の実サイズにして、描く座標は CSS サイズのまま', () => {
     const old = window.devicePixelRatio;
-    window.devicePixelRatio = 3;
-    const { canvas, calls } = fakeCanvas(300, 200);
-    const g = createPitchGraph(canvas, { minMidi: 48, maxMidi: 72 });
-    g.clear();
-    expect(canvas.width).toBe(900);
-    expect(canvas.height).toBe(600);
-    expect(calls.some((c) => c[0] === 'setTransform' && c[1] === 3 && c[4] === 3)).toBe(true);
-    window.devicePixelRatio = old;
+    try {
+      window.devicePixelRatio = 3;
+      const { canvas, calls } = fakeCanvas(300, 200);
+      const g = createPitchGraph(canvas, { minMidi: 48, maxMidi: 72 });
+      g.clear();
+      expect(canvas.width).toBe(900);
+      expect(canvas.height).toBe(600);
+      expect(calls.some((c) => c[0] === 'setTransform' && c[1] === 3 && c[4] === 3)).toBe(true);
+      expect(canvas.classList.contains('pitch-graph')).toBe(true);
+    } finally {
+      window.devicePixelRatio = old;
+    }
+  });
+
+  it('何度 push しても実サイズが増え続けない', () => {
+    const old = window.devicePixelRatio;
+    try {
+      window.devicePixelRatio = 3;
+      const { canvas } = fakeCanvas(300, 200);
+      const g = createPitchGraph(canvas, { minMidi: 48, maxMidi: 72 });
+      g.push(0, 60);
+      const w = canvas.width;
+      for (let i = 1; i <= 5; i++) g.push(i * 100, 60);
+      expect(canvas.width).toBe(w);
+    } finally {
+      window.devicePixelRatio = old;
+    }
   });
 
   it('null で線が切れる（moveTo が2回）、窓より古い点は捨てる', () => {
