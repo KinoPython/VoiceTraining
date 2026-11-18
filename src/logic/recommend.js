@@ -1,5 +1,7 @@
 // きょうのおすすめの段。順番に進める：聞き分け → 声の地図 → 目標の高さ → メロディ。
-const PASS_LEVEL = 4; // この水準に届いたら次の段へ
+import { CONFIG } from './config.js';
+
+const PASS_LEVEL = CONFIG.recommend.passLevel; // この水準に届いたら次の段へ
 
 export function recommendStage(state) {
   if (!state.history.some((h) => h.stage === 1)) return 1;

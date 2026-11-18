@@ -11,4 +11,5 @@ export const CONFIG = {
   stage4: { toneMs: 1500, waitMs: 500, tryMs: 6000 },
   stage5: { noteMs: 800, skipMs: 250, passRatio: 0.6 },
   session: { minutes: 10 },
+  recommend: { passLevel: 4 }, // この水準に届いたら、おすすめが次の段へ進む
 };
