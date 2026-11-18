@@ -1,0 +1,73 @@
+import { describe, test, expect, beforeEach } from 'vitest';
+import { renderRecord } from '../../src/screens/record.js';
+import { findBanned } from '../../src/logic/words.js';
+
+const range = { comfort: 60, low: 55, high: 67 };
+function seed(patch) {
+  const base = { version: 1, range: null, levels: { s1: 0, s3: 0, s4: 0, s5: 0 }, history: [], welcomed: true };
+  localStorage.setItem('koetore.v1', JSON.stringify({ ...base, ...patch }));
+}
+function open() {
+  const root = document.createElement('div');
+  renderRecord(root);
+  return root;
+}
+
+describe('きろく', () => {
+  beforeEach(() => localStorage.clear());
+
+  test('記録が空なら案内を出す', () => {
+    const root = open();
+    expect(root.textContent).toContain('練習すると、ここに');
+    expect(root.querySelectorAll('circle').length).toBe(0);
+  });
+
+  test('段1の3日ぶんで、折れ線の点が3つ', () => {
+    seed({ history: [
+      { date: '2026-11-16', stage: 1, tries: 5, successes: 3, value: 4 },
+      { date: '2026-11-17', stage: 1, tries: 5, successes: 4, value: 3 },
+      { date: '2026-11-18', stage: 1, tries: 5, successes: 5, value: 2 },
+    ] });
+    const root = open();
+    expect(root.querySelectorAll('svg.trend circle').length).toBe(3);
+    expect(root.querySelectorAll('polyline').length).toBe(1);
+    expect(root.textContent).toContain('下に 行くほど、細かく 聞き分けられて います');
+  });
+
+  test('同じ日に2回なら、その日の最小値の点が1つ', () => {
+    seed({ history: [
+      { date: '2026-11-18', stage: 1, tries: 5, successes: 3, value: 4 },
+      { date: '2026-11-18', stage: 1, tries: 5, successes: 3, value: 2 },
+    ] });
+    const root = open();
+    expect(root.querySelectorAll('svg.trend circle').length).toBe(1);
+    expect(root.querySelector('polyline')).toBeNull();
+    expect(root.textContent).toContain('差の 目安：ドと レ');
+  });
+
+  test('日ごとの一覧は新しい日が上で、段ごとの文が出る', () => {
+    seed({ range, history: [
+      { date: '2026-11-17', stage: 2, tries: 1, successes: 1, value: 12 },
+      { date: '2026-11-18', stage: 3, tries: 4, successes: 3, value: 0 },
+      { date: '2026-11-18', stage: 5, tries: 6, successes: 4, value: 0.756 },
+    ] });
+    const t = open().textContent;
+    expect(t.indexOf('2026-11-18')).toBeLessThan(t.indexOf('2026-11-17'));
+    expect(t).toContain('幅 12 半音');
+    expect(t).toContain('4回 中 3回 できた');
+    expect(t).toContain('6回 中 4回 できた');
+    expect(t).toContain('合いぐあい 平均 76%（目安）');
+  });
+
+  test('声の地図があれば鍵盤を出す', () => {
+    seed({ range });
+    expect(open().querySelector('svg.keyboard')).not.toBeNull();
+  });
+
+  test('禁止語と「連続」が無い', () => {
+    seed({ range, history: [{ date: '2026-11-18', stage: 1, tries: 5, successes: 1, value: 5 }] });
+    const t = open().textContent;
+    expect(findBanned(t)).toEqual([]);
+    expect(t).not.toContain('連続');
+  });
+});
