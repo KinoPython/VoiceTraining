@@ -130,13 +130,14 @@ describe('段5 短いメロディ', () => {
     await click(root, '歌う');
     feedSong(mic, (i) => NOTES[i]);
     await settle();
+    second = true; // ここから先にくじを引き直すと ド→レ→ド になる（もう一度が引き直せば気づける）
+    calls = 0;
     await click(root, 'もう一度');
     expect(root.textContent).toContain('ド→レ');
     expect(root.textContent).not.toContain('ド→レ→ド');
     await click(root, '歌う');
     feedSong(mic, (i) => NOTES[i], 20000);
     await settle();
-    second = true;
     calls = 0;
     await click(root, 'つぎの メロディ');
     expect(root.textContent).toContain('ド→レ→ド');
