@@ -22,6 +22,7 @@ const defaultDeps = {
   // 「3・2・1」の1拍ぶんの待ち
   wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   rand: Math.random,
+  now: () => performance.now(), // グラフの時計の出発点
 };
 
 const TEXT = {
@@ -122,31 +123,42 @@ export function renderStage5(root, params, deps = defaultDeps) {
     const resultBox = document.createElement('div');
     let busy = false;
 
-    // お手本を見せる前の階段（時計を totalMs に進めて、全体が見えるようにする）
-    function showStaircase() {
-      graph.clear();
-      graph.push(totalMs, null);
-      placeBands(graph, segments, tolerance, 0);
+    // グラフの時計。後ろに戻すと帯が画面の外に出てしまうので、進める向きにしか使わない
+    let clock = d.now();
+    function pushAt(t, midi) {
+      clock = Math.max(clock, t);
+      graph.push(clock, midi);
     }
 
-    // お手本：1音ずつ鳴らし、鳴っている音を線グラフに印として描く
+    // お手本の前の階段（時計を全体の長さぶん進めて、全体が見えるようにする）
+    function showStaircase() {
+      const base = clock;
+      pushAt(base + totalMs, null);
+      placeBands(graph, segments, tolerance, base);
+    }
+
+    // お手本：1音ずつ鳴らし、鳴っている音を線グラフに印として描く。帯は歌うときと同じく時計に合わせて流れる
     async function playModel() {
       if (busy) return;
       busy = true;
       const myRun = ++runId;
-      showStaircase();
+      graph.setOk(false);
+      graph.clear();
+      const base = clock;
+      pushAt(base, null);
+      placeBands(graph, segments, tolerance, base);
       status.textContent = TEXT.listening;
       for (const seg of segments) {
-        graph.push(seg.startMs, seg.midi);
+        pushAt(base + seg.startMs, seg.midi);
         try {
           await d.playNote(seg.midi, CONFIG.stage5.noteMs);
         } catch {
           // 鳴らせなくても続けられる
         }
         if (myRun !== runId || disposed || ended) return;
-        graph.push(seg.endMs - 1, seg.midi);
+        pushAt(base + seg.endMs - 1, seg.midi);
       }
-      graph.push(totalMs, null);
+      pushAt(base + totalMs, null);
       status.textContent = TEXT.guide;
       busy = false;
     }
@@ -179,6 +191,7 @@ export function renderStage5(root, params, deps = defaultDeps) {
             placeBands(graph, segments, tolerance, singStart); // 帯がグラフの時計といっしょに流れる
           }
           readings.push({ t: now - singStart, midi });
+          clock = now;
           graph.push(now, midi);
           if (now - singStart >= totalMs + TAIL_MS) finish(true);
         });
@@ -190,6 +203,7 @@ export function renderStage5(root, params, deps = defaultDeps) {
       busy = true;
       stopEverything();
       const myRun = runId;
+      graph.setOk(false);
       graph.clear();
       resultBox.replaceChildren();
       if (!(await countIn(myRun))) return;

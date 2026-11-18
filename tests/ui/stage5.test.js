@@ -1,4 +1,17 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+
+// 線グラフの push の時刻を記録する（中身は本物のまま）
+const graphLog = vi.hoisted(() => ({ pushes: [] }));
+vi.mock('../../src/ui/pitchGraph.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    createPitchGraph: (...args) => {
+      const g = actual.createPitchGraph(...args);
+      return { ...g, push: (now, midi) => { graphLog.pushes.push(now); g.push(now, midi); } };
+    },
+  };
+});
 import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage5 } from '../../src/screens/stage5.js';
 import { findBanned } from '../../src/logic/words.js';
@@ -21,12 +34,12 @@ function makeMic() {
 const NOTES = [53, 55, 53];
 let tone;
 let waiter;
-async function open(mic) {
+async function open(mic, rand = () => 0.5) {
   resetRoutes();
   history.replaceState(null, '', location.pathname);
   tone = { playNote: vi.fn(() => Promise.resolve()), stopAll: vi.fn() };
   waiter = { wait: vi.fn(() => Promise.resolve()) };
-  const deps = { openMic: async () => ({ ok: true, mic }), ...tone, wait: waiter.wait, rand: () => 0.5 };
+  const deps = { openMic: async () => ({ ok: true, mic }), ...tone, wait: waiter.wait, rand };
   register('stage5', (root, params) => renderStage5(root, params, deps));
   register('stage2', (root) => { root.textContent = '段2'; });
   register('home', (root) => { root.textContent = 'ホーム'; });
@@ -106,18 +119,36 @@ describe('段5 短いメロディ', () => {
   });
 
   test('「もう一度」は同じメロディ、「つぎの メロディ」で選びなおす', async () => {
+    // pickMelody は くじを2回引く。最初は ド→レ（0.9, 0）、あとで ド→レ→ド（0.9, 0.99）になるようにする
+    let second = false;
+    let calls = 0;
+    const rand = () => (calls++ % 2 === 0 ? 0.9 : second ? 0.99 : 0);
     const mic = makeMic();
-    const root = await open(mic);
+    const root = await open(mic, rand);
+    expect(root.textContent).toContain('ド→レ');
+    expect(root.textContent).not.toContain('ド→レ→ド');
     await click(root, '歌う');
     feedSong(mic, (i) => NOTES[i]);
     await settle();
     await click(root, 'もう一度');
-    expect(root.textContent).toContain('ド→レ→ド');
+    expect(root.textContent).toContain('ド→レ');
+    expect(root.textContent).not.toContain('ド→レ→ド');
     await click(root, '歌う');
     feedSong(mic, (i) => NOTES[i], 20000);
     await settle();
+    second = true;
+    calls = 0;
     await click(root, 'つぎの メロディ');
-    expect(byLabel(root, '歌う')).toBeTruthy();
+    expect(root.textContent).toContain('ド→レ→ド');
+  });
+
+  test('お手本のあいだ、線グラフの時計は後ろに戻らない', async () => {
+    graphLog.pushes.length = 0;
+    const root = await open(makeMic());
+    await click(root, '▶ お手本');
+    const p = graphLog.pushes;
+    expect(p.length).toBeGreaterThan(3);
+    for (let i = 1; i < p.length; i++) expect(p[i]).toBeGreaterThanOrEqual(p[i - 1]);
   });
 
   test('おわるで記録を保存してホームへ（平均の合いぐあいを value に）', async () => {
