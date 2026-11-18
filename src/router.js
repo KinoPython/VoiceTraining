@@ -56,7 +56,8 @@ async function renderCurrent() {
     // 描画中に別の画面へ移っていたら、この画面はすぐ後始末する
     if (myId !== renderId) await runDispose(dispose);
     else currentDispose = dispose;
-  } catch {
+  } catch (error) {
+    console.error(error);
     if (myId !== renderId) return;
     rootEl.textContent = 'うまく開けませんでした。もういちど開いてみてください。';
   }

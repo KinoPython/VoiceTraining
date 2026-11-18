@@ -1,10 +1,12 @@
 // オフラインでも開くための Service Worker。パスは相対で書く（置き場所のフォルダ名に左右されないため）
 const CACHE_PREFIX = 'koetore-';
-const CACHE_NAME = CACHE_PREFIX + 'v1';
+// 下の2つの目印は、ビルドのときに vite.config.js が書きかえる
+const CACHE_NAME = CACHE_PREFIX + '__BUILD_VERSION__';
+const PRECACHE_LIST = '__PRECACHE_LIST__';
 
 self.addEventListener('install', (event) => {
-  // 入り口だけ先に保存する。残りは使ったときに保存される
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(['./', './index.html'])));
+  // ビルドで出来た全ファイルを先に保存する（初めて開いたあと電波がなくても動かすため）
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_LIST)));
   self.skipWaiting();
 });
 
@@ -28,7 +30,7 @@ self.addEventListener('fetch', (event) => {
       const saved = await cache.match(request);
       if (saved) return saved;
       const response = await fetch(request);
-      if (response.ok) cache.put(request, response.clone());
+      if (response.ok) event.waitUntil(cache.put(request, response.clone()));
       return response;
     })
   );
