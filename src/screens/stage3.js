@@ -13,7 +13,7 @@ import { CONFIG } from '../logic/config.js';
 import { todayString } from '../logic/today.js';
 import { loadState, setLevel, addHistory } from '../storage/store.js';
 import { MAP_FIRST_HINT } from '../data/copy.js';
-import tips from '../data/tips.json';
+import { tipNote } from '../ui/tipNote.js';
 
 const defaultDeps = { openMic, playNote, stopAll };
 
@@ -79,12 +79,6 @@ export function renderStage3(root, params, deps = defaultDeps) {
     if (activeTry) activeTry.cancel();
     deps.stopAll();
     root.replaceChildren(title(), note(TEXT.stopped), button('もう一度 マイクを ひらく', () => session.open()));
-  }
-
-  // 段のコツを1つ（tips.s3 が空なら出さない）
-  function tipNote() {
-    const list = tips.s3 ?? [];
-    return list.length ? [note(list[tries % list.length])] : [];
   }
 
   function showTry() {
@@ -172,7 +166,7 @@ export function renderStage3(root, params, deps = defaultDeps) {
       listenBtn,
       startBtn,
       endBtn,
-      ...tipNote(),
+      ...tipNote('s3', tries),
     );
   }
 

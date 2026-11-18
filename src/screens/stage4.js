@@ -13,7 +13,7 @@ import { CONFIG } from '../logic/config.js';
 import { todayString } from '../logic/today.js';
 import { loadState, setLevel, addHistory } from '../storage/store.js';
 import { MAP_FIRST_HINT } from '../data/copy.js';
-import tips from '../data/tips.json';
+import { tipNote } from '../ui/tipNote.js';
 
 const defaultDeps = {
   openMic,
@@ -114,12 +114,6 @@ export function renderStage4(root, params, deps = defaultDeps) {
     d.stopAll();
     dropTake();
     root.replaceChildren(title(), note(TEXT.stopped), button('もう一度 マイクを ひらく', () => session.open()));
-  }
-
-  // 段のコツを1つ（tips.s4 が空なら出さない）
-  function tipNote() {
-    const list = tips.s4 ?? [];
-    return list.length ? [note(list[tries % list.length])] : [];
   }
 
   function showTry() {
@@ -234,7 +228,7 @@ export function renderStage4(root, params, deps = defaultDeps) {
       replayBox,
       startBtn,
       endBtn,
-      ...tipNote(),
+      ...tipNote('s4', tries),
     );
   }
 

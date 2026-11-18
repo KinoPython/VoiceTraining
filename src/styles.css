@@ -53,6 +53,7 @@ canvas.pitch-graph { display: block; width: 100%; height: 240px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 8px 0; }
 .note { color: var(--muted); margin: 8px 0; }
 .note a { color: var(--accent); } /* リンクも色トークンで（暗い画面でも読めるように） */
+.tip { color: var(--ink); } /* コツは目に入りやすいよう、ふつうの注釈より少し濃く */
 .safety { padding-left: 1.2em; }
 .links { margin-top: 24px; }
 

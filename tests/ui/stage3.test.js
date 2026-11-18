@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { register, start, resetRoutes } from '../../src/router.js';
 import { renderStage3 } from '../../src/screens/stage3.js';
 import { findBanned } from '../../src/logic/words.js';
+import tips from '../../src/data/tips.json';
 import { loadState, saveRange } from '../../src/storage/store.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -76,6 +77,12 @@ describe('段3 すべらせて止める', () => {
     await click(root, 'おわる');
     const h = loadState().history.at(-1);
     expect(h).toMatchObject({ stage: 3, tries: 1, successes: 1, value: null });
+  });
+
+  test('コツの文が 💡 つきで出る', async () => {
+    const root = await openAndStart(makeMic());
+    await click(root, 'はじめる');
+    expect(root.querySelector('.tip').textContent).toBe('💡 ' + tips.s3[0]);
   });
 
   test('帯より上の声には「少し 高め」が出る', async () => {
