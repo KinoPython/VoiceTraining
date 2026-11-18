@@ -118,3 +118,143 @@ describe('iPhone のマナーモードと「中断」状態', () => {
     expect(resolved).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('スピーカーを借りる（マイク使用中のお手本を下のスピーカーから）', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    navigator.audioSession = { type: 'auto' };
+    // 本物と同じく、予約した終わりの時刻に onended が来る（stop() だけ即座）。currentTime は 0 のまま
+    const create = fake.ctx.createOscillator;
+    fake.ctx.createOscillator = () => {
+      const osc = create();
+      osc.stop = vi.fn((when = 0) => setTimeout(() => osc.onended && osc.onended(), when * 1000));
+      return osc;
+    };
+  });
+
+  // マイクを開いた状態にする（mic.js がやることの再現）
+  function micOpen() {
+    tone.setMicActive(true);
+    navigator.audioSession.type = 'play-and-record';
+  }
+
+  test('鳴らす間は playback、終わって 199ms は playback のまま、200ms で play-and-record に戻る', async () => {
+    micOpen();
+    const p = tone.playNote(60, 500);
+    expect(navigator.audioSession.type).toBe('playback');
+    await vi.advanceTimersByTimeAsync(500);
+    await p;
+    await vi.advanceTimersByTimeAsync(199);
+    expect(navigator.audioSession.type).toBe('playback');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('マイクなしなら、鳴り終わっても playback のまま', async () => {
+    tone.setMicActive(false);
+    const p = tone.playNote(60, 100);
+    await vi.advanceTimersByTimeAsync(100);
+    await p;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(navigator.audioSession.type).toBe('playback');
+  });
+
+  test('2音を続けて鳴らす間（1音目の終わりから100ms後に2音目）は戻らない', async () => {
+    micOpen();
+    const p1 = tone.playNote(60, 200);
+    await vi.advanceTimersByTimeAsync(200);
+    await p1;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(navigator.audioSession.type).toBe('playback');
+    const p2 = tone.playNote(62, 200);
+    await vi.advanceTimersByTimeAsync(150); // 1音目の終わりから250ms。戻る予定は取り消されている
+    expect(navigator.audioSession.type).toBe('playback');
+    await vi.advanceTimersByTimeAsync(50);
+    await p2;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('playSequence の音の間（pause なし）でも戻らない', async () => {
+    micOpen();
+    const p = tone.playSequence([{ midi: 60, durationMs: 100 }, { midi: 62, durationMs: 100 }]);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(navigator.audioSession.type).toBe('playback');
+    await vi.advanceTimersByTimeAsync(100);
+    await p;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('鳴っている途中でマイクが閉じたら、あとで play-and-record に戻さない', async () => {
+    micOpen();
+    const p = tone.playNote(60, 500);
+    await vi.advanceTimersByTimeAsync(100);
+    tone.setMicActive(false); // mic.js の close() は playback にしてから知らせる
+    navigator.audioSession.type = 'playback';
+    await vi.advanceTimersByTimeAsync(400);
+    await p;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(navigator.audioSession.type).toBe('playback');
+  });
+
+  test('stopAll で止めたら借りた分が返り、200ms で戻る', async () => {
+    micOpen();
+    const p = tone.playNote(60, 5000);
+    const q = tone.playNote(64, 5000);
+    tone.stopAll();
+    await vi.advanceTimersByTimeAsync(0); // onended
+    await Promise.all([p, q]);
+    await vi.advanceTimersByTimeAsync(199);
+    expect(navigator.audioSession.type).toBe('playback');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('osc.stop が例外でも、stopAll は借りた分を返す', async () => {
+    micOpen();
+    const p = tone.playNote(60, 5000);
+    fake.oscillators[0].stop = vi.fn(() => { throw new Error('already stopped'); });
+    tone.stopAll();
+    await p;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('start が例外でも借りっぱなしにしない', async () => {
+    micOpen();
+    const original = fake.ctx.createOscillator;
+    fake.ctx.createOscillator = () => {
+      const osc = original.call(fake.ctx);
+      osc.start = vi.fn(() => { throw new Error('bad'); });
+      return osc;
+    };
+    await tone.playNote(60, 100); // 鳴らせなくても終わる
+    await vi.advanceTimersByTimeAsync(200);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('borrowSpeaker の返す関数を2回呼んでも、ほかの借りを返してしまわない', async () => {
+    micOpen();
+    const giveA = tone.borrowSpeaker();
+    const giveB = tone.borrowSpeaker();
+    giveA();
+    giveA(); // 2回目は何もしない
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(navigator.audioSession.type).toBe('playback'); // B がまだ借りている
+    giveB();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('navigator.audioSession が無くても例外にならない', async () => {
+    delete navigator.audioSession;
+    tone.setMicActive(true);
+    const p = tone.playNote(60, 100);
+    await vi.advanceTimersByTimeAsync(100);
+    await p;
+    const give = tone.borrowSpeaker();
+    expect(() => give()).not.toThrow();
+    await vi.advanceTimersByTimeAsync(300);
+  });
+});

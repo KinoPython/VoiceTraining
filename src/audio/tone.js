@@ -5,9 +5,10 @@ const ATTACK_SEC = 0.03; // 立ち上がり：いきなり鳴らすと「プツ�
 const RELEASE_SEC = 0.08; // 消え際：同じ理由
 const PEAK_GAIN = 0.3; // 耳を痛めない控えめの音量
 const SAFETY_MS = 300; // 終わりの知らせ（onended）が来ないときに待つ、長さ＋この分
+const RELEASE_DELAY_MS = 200; // 音が続くときに切りかえがばたつかないよう、鳴り終わってから戻すまで待つ
 
 let context = null;
-const playing = new Set(); // いま鳴っている（予約済みを含む）オシレーター
+const playing = new Map(); // いま鳴っている（予約済みを含む）オシレーター → その終わらせ方
 let stopGeneration = 0; // stopAll のたびに増やし、playSequence の続きを打ち切る目印にする
 
 // iPhone の音の出し方（audioSession）を変える。対応していない端末では何もしない
@@ -17,6 +18,40 @@ export function setAudioSessionType(type) {
   } catch {
     // 変えられなくても音は鳴らせる
   }
+}
+
+// --- スピーカーを借りる仕組み ---
+// マイク使用中（play-and-record）の iPhone は、音を耳元の小さなスピーカーから鳴らす。
+// 鳴らす間だけ playback にして下のスピーカーを使い、終わったら（マイクが開いていれば）戻す。
+let micActive = false; // マイクが開いているか（mic.js が知らせる）
+let borrowCount = 0; // いま借りている数（鳴っている音・聞き直しの数）
+let restoreTimer = null;
+
+export function setMicActive(active) {
+  micActive = active;
+}
+
+// 借りる。返す関数を返す（2回呼んでも1回分だけ返す。他の借りを返してしまわないため）
+export function borrowSpeaker() {
+  borrowCount += 1;
+  if (borrowCount === 1) {
+    clearTimeout(restoreTimer); // 戻す予定があれば取り消す（続けて鳴らすとき）
+    restoreTimer = null;
+    setAudioSessionType('playback');
+  }
+  let returned = false;
+  return () => {
+    if (returned) return;
+    returned = true;
+    borrowCount -= 1;
+    if (borrowCount > 0) return;
+    clearTimeout(restoreTimer);
+    restoreTimer = setTimeout(() => {
+      restoreTimer = null;
+      // 待つ間に誰かが借りた・マイクが閉じた場合は戻さない
+      if (borrowCount === 0 && micActive) setAudioSessionType('play-and-record');
+    }, RELEASE_DELAY_MS);
+  };
 }
 
 export function getAudioContext() {
@@ -60,6 +95,7 @@ export function playNote(midi, durationMs, whenMs = 0) {
   gain.connect(ctx.destination);
 
   return new Promise((resolve) => {
+    const giveBack = borrowSpeaker(); // 鳴らす間は下のスピーカーを借りる
     let finished = false;
     // 終わりの知らせと安全タイマーの、早いほうで1回だけ終える
     const finish = () => {
@@ -67,14 +103,19 @@ export function playNote(midi, durationMs, whenMs = 0) {
       finished = true;
       clearTimeout(timer);
       playing.delete(osc);
+      giveBack();
       resolve();
     };
     // 中断中の iPhone では onended が来ないことがある。待ち続けて画面が止まらないように
     const timer = setTimeout(finish, whenMs + durationMs + SAFETY_MS);
-    playing.add(osc);
+    playing.set(osc, finish);
     osc.onended = finish;
-    osc.start(startSec);
-    osc.stop(endSec);
+    try {
+      osc.start(startSec);
+      osc.stop(endSec);
+    } catch {
+      finish(); // 鳴らせなかったら、借りたままにせず終える（練習は続けられる）
+    }
   });
 }
 
@@ -91,11 +132,11 @@ export async function playSequence(notes, pauseMs = 0) {
 
 export function stopAll() {
   stopGeneration += 1;
-  for (const osc of [...playing]) {
+  for (const [osc, finish] of [...playing]) {
     try {
       osc.stop(); // すぐ止める。onended が呼ばれて playing から消える
     } catch {
-      playing.delete(osc);
+      finish(); // 止められなくても、借りた分は返す
     }
   }
 }

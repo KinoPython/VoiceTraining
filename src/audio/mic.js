@@ -1,6 +1,6 @@
 // マイクを開き、声の高さを1コマごとに測る。声はスマホの中だけで処理し、外に送らない。
 import { detectPitch, createSmoother } from '../logic/pitch.js';
-import { getAudioContext, setAudioSessionType } from './tone.js';
+import { getAudioContext, setAudioSessionType, setMicActive } from './tone.js';
 
 const FFT_SIZE = 2048;
 // iPhone は audio/mp4、そのほかは webm が録れる。使えるものを選ぶ
@@ -106,6 +106,7 @@ function createMic(stream, ctx) {
     urls.length = 0;
     // 録音用の音の出し方のままだと、iPhone の上の表示などが残る。音だけの形に戻す
     setAudioSessionType('playback');
+    setMicActive(false); // 閉じたあとは、お手本のあとで play-and-record に戻さない
     if (closedCallback) closedCallback(reason);
   }
 
@@ -146,7 +147,9 @@ export async function openMic() {
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
     if (ctx.state !== 'running') await ctx.resume();
-    return { ok: true, mic: createMic(stream, ctx) };
+    const mic = createMic(stream, ctx);
+    setMicActive(true); // お手本のあと、歌う間は play-and-record に戻してもらう
+    return { ok: true, mic };
   } catch (error) {
     // 途中で失敗してもマイクを開けっぱなしにしない
     if (stream) stream.getTracks().forEach((t) => t.stop());

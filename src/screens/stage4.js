@@ -4,7 +4,7 @@ import { button, heading, note } from '../ui/components.js';
 import { createPitchGraph } from '../ui/pitchGraph.js';
 import { createMicSession, runTry } from '../ui/practiceLoop.js';
 import { openMic } from '../audio/mic.js';
-import { playNote, stopAll } from '../audio/tone.js';
+import { playNote, stopAll, borrowSpeaker } from '../audio/tone.js';
 import { createHoldJudge } from '../logic/hold.js';
 import { matchTarget, toleranceFor } from '../logic/targets.js';
 import { createLadder } from '../logic/ladder.js';
@@ -63,12 +63,22 @@ export function renderStage4(root, params, deps = defaultDeps) {
   let activeTry = null;
   let takeUrl = null; // 直前の録音。次の回・離れるときに捨てる
   let audio = null;
+  let giveBackSpeaker = null; // 聞き直しで借りたスピーカーを返す関数
 
   const title = () => heading('1音 合わせ');
 
   function stopOwnVoice() {
-    if (audio) audio.pause();
+    const current = audio;
     audio = null;
+    if (current) current.pause();
+    releaseSpeaker();
+  }
+
+  // 借りたスピーカーを返す
+  function releaseSpeaker() {
+    const give = giveBackSpeaker;
+    giveBackSpeaker = null;
+    if (give) give();
   }
 
   // 録音の URL を捨てる（メモリに残さない）
@@ -150,11 +160,17 @@ export function renderStage4(root, params, deps = defaultDeps) {
     async function playOwn() {
       if (!takeUrl) return;
       stopOwnVoice();
-      audio = d.createAudio(takeUrl);
+      const mine = d.createAudio(takeUrl);
+      audio = mine;
+      // 聞き直しの音も下のスピーカーから。終わり・止めた・失敗のどれでも返す
+      const give = borrowSpeaker(); // 返す関数は何度呼んでも1回分だけ
+      giveBackSpeaker = give;
+      mine.onended = give;
+      mine.onpause = give;
       try {
-        await audio.play();
+        await mine.play();
       } catch {
-        // 再生できなくても練習は続けられる
+        give(); // 再生できなくても練習は続けられる
       }
     }
 

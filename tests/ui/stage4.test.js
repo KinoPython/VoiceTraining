@@ -1,8 +1,9 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { register, start, resetRoutes } from '../../src/router.js';
 import { renderStage4 } from '../../src/screens/stage4.js';
 import { findBanned } from '../../src/logic/words.js';
 import { loadState, saveRange } from '../../src/storage/store.js';
+import * as tone2 from '../../src/audio/tone.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const byLabel = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent === label);
@@ -69,6 +70,10 @@ async function beginTry(root) {
 }
 
 describe('段4 1音合わせ', () => {
+  afterEach(() => {
+    delete navigator.audioSession;
+    tone2.setMicActive(false);
+  });
   beforeEach(() => {
     localStorage.clear();
     saveRange({ comfort: 55, low: 50, high: 60 });
@@ -160,6 +165,52 @@ describe('段4 1音合わせ', () => {
     expect(audios[0].play).toHaveBeenCalled();
     await click(root, 'つぎへ');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:take1');
+  });
+
+  test('自分の声の再生中は playback、ended で返る（200ms 後に戻る）', async () => {
+    navigator.audioSession = { type: 'play-and-record' };
+    tone2.setMicActive(true);
+    const mic = makeMic();
+    const root = await open(mic);
+    await beginTry(root);
+    feed(mic, 1000, TARGET);
+    await settle();
+    await click(root, '自分の 声');
+    expect(navigator.audioSession.type).toBe('playback');
+    audios[0].onended();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('聞き直しの play() が断られても、借りた分は返る', async () => {
+    navigator.audioSession = { type: 'play-and-record' };
+    tone2.setMicActive(true);
+    const mic = makeMic();
+    const root = await open(mic);
+    await beginTry(root);
+    feed(mic, 1000, TARGET);
+    await settle();
+    const realCreate = audios.push.bind(audios);
+    audios.push = (a) => { a.play = vi.fn(() => Promise.reject(new Error('NotAllowed'))); return realCreate(a); };
+    await click(root, '自分の 声');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(navigator.audioSession.type).toBe('play-and-record');
+  });
+
+  test('聞き直しの途中で画面を離れても、借りた分は返る', async () => {
+    navigator.audioSession = { type: 'play-and-record' };
+    tone2.setMicActive(true);
+    const mic = makeMic();
+    const root = await open(mic);
+    await beginTry(root);
+    feed(mic, 1000, TARGET);
+    await settle();
+    await click(root, '自分の 声');
+    expect(navigator.audioSession.type).toBe('playback');
+    location.hash = '#home';
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(navigator.audioSession.type).toBe('play-and-record');
   });
 
   test('「続けて 聞く」はお手本のあとに自分の声', async () => {

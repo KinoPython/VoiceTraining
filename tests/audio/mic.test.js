@@ -278,3 +278,53 @@ describe('レビュー指摘の修正', () => {
     expect(cbB).toHaveBeenCalledWith('closed');
   });
 });
+
+describe('スピーカーを借りる仕組みとのつなぎ', () => {
+  test('openMic 成功のあと、借りて返すと play-and-record に戻る', async () => {
+    vi.useFakeTimers();
+    try {
+      navigator.audioSession = { type: 'auto' };
+      const tone = await import('../../src/audio/tone.js');
+      await openOk();
+      const give = tone.borrowSpeaker();
+      expect(navigator.audioSession.type).toBe('playback');
+      give();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(navigator.audioSession.type).toBe('play-and-record');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('close() のあとは、借りて返しても play-and-record に戻らない', async () => {
+    vi.useFakeTimers();
+    try {
+      navigator.audioSession = { type: 'auto' };
+      const tone = await import('../../src/audio/tone.js');
+      const { mic } = await openOk();
+      mic.close();
+      const give = tone.borrowSpeaker();
+      give();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(navigator.audioSession.type).toBe('playback');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('openMic が失敗したときは、マイクありとして扱わない', async () => {
+    vi.useFakeTimers();
+    try {
+      navigator.audioSession = { type: 'auto' };
+      const tone = await import('../../src/audio/tone.js');
+      installFakeMediaDevices(vi.fn(async () => { throw domError('NotAllowedError'); }));
+      await openMic();
+      const give = tone.borrowSpeaker();
+      give();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(navigator.audioSession.type).toBe('playback');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
