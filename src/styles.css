@@ -34,3 +34,13 @@ body {
 }
 
 .screen { max-width: 640px; margin: 0 auto; padding: 16px; }
+
+/* 鍵盤（src/ui/keyboard.js）。印の色はトークンだけで決める */
+.keyboard { width: 100%; height: auto; display: block; }
+.keyboard .kb-white { fill: var(--card); stroke: var(--line); stroke-width: 1; }
+.keyboard .kb-black { fill: var(--ink); stroke: var(--ink); stroke-width: 1; }
+.keyboard .kb-label { fill: var(--muted); font-size: 10px; }
+.keyboard .kb-a { fill: var(--accent); }
+.keyboard .kb-b { fill: var(--band-ok); stroke: var(--accent); stroke-width: 2; }
+.keyboard .kb-range { fill: var(--band); }
+.keyboard .kb-comfort { fill: var(--band-ok); }
