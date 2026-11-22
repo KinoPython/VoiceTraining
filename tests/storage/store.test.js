@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import {
   loadState, saveRange, setLevel, addHistory, setWelcomed,
   exportBackup, importBackup, requestPersist,
@@ -222,5 +222,22 @@ describe('段6：曲の記録', () => {
     const old = { version: 1, range: null, levels: { s1: 0, s3: 0, s4: 0, s5: 0 }, history: [], welcomed: false };
     expect(importBackup(JSON.stringify(old))).toEqual({ ok: true });
     expect(loadState().songs).toEqual([]);
+  });
+
+  test('保存できた曲の操作は { ok: true } を返す', () => {
+    expect(addSong(song())).toEqual({ ok: true });
+    expect(updateSong('s1', { keyAdvice: 1 })).toEqual({ ok: true });
+  });
+
+  test('localStorage がいっぱいで書けないとき、addSong・updateSong・saveSection は storage を返す', () => {
+    addSong(song());
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    expect(addSong(song('s2'))).toEqual({ ok: false, reason: 'storage' });
+    expect(updateSong('s1', { keyAdvice: 3 })).toEqual({ ok: false, reason: 'storage' });
+    expect(saveSection('s1', section('a'))).toEqual({ ok: false, reason: 'storage' });
+    spy.mockRestore();
+    expect(loadState().songs.map((x) => x.id)).toEqual(['s1']);
   });
 });

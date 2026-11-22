@@ -81,20 +81,36 @@ export function loadState() {
   }
 }
 
-// 書き込みの失敗は呼び出し側に伝えない（記録できなくても練習は続けられる）
+// 記録がいま読めるか。読めない間に「記録に無いファイル」を消すと、使っている曲のファイルまで消してしまうため
+export function isStateReadable() {
+  try {
+    const text = localStorage.getItem(KEY);
+    if (text) JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 書き込めたら true。例外は外に出さない（記録できなくても練習は続けられる）。
+// 曲の記録は、書けなかったことを画面で知らせるために結果を使う
 function writeState(state) {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
+    return true;
   } catch {
-    // 何もしない
+    return false;
   }
 }
 
 function update(change) {
   const state = loadState();
   change(state);
-  writeState(state);
+  return writeState(state);
 }
+
+// 曲の記録の結果の形。書けなかったら 'storage'（容量が足りないことが多い）
+const written = (ok) => (ok ? { ok: true } : { ok: false, reason: 'storage' });
 
 export const saveRange = (range) => update((s) => { s.range = range; });
 export const setLevel = (stage, level) => update((s) => { s.levels[stage] = level; });
@@ -108,18 +124,26 @@ export const newId = () => (globalThis.crypto?.randomUUID
   : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
 // 曲の記録。ファイルそのものは songFiles.js（IndexedDB）に置く
-export const addSong = (song) => update((s) => { s.songs.push(song); });
-export const updateSong = (id, patch) => update((s) => {
-  const i = s.songs.findIndex((x) => x.id === id);
-  if (i >= 0) s.songs[i] = { ...s.songs[i], ...patch, id }; // id は書きかえさせない
-});
+export const addSong = (song) => written(update((s) => { s.songs.push(song); }));
+
+// 一部だけ変える。曲が無いときは 'nosong'（例外にはしない）
+export function updateSong(id, patch) {
+  let found = false;
+  const ok = update((s) => {
+    const i = s.songs.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    found = true;
+    s.songs[i] = { ...s.songs[i], ...patch, id }; // id は書きかえさせない
+  });
+  return found ? written(ok) : { ok: false, reason: 'nosong' };
+}
 export const removeSong = (id) => update((s) => { s.songs = s.songs.filter((x) => x.id !== id); });
 export const getSong = (id) => loadState().songs.find((x) => x.id === id) ?? null;
 
 // 区間を足す（同じ id なら上書き）。1曲に maxSections まで。曲が無いときは 'nosong'（例外にはしない）
 export function saveSection(songId, section) {
   let result = { ok: false, reason: 'nosong' };
-  update((s) => {
+  const ok = update((s) => {
     const song = s.songs.find((x) => x.id === songId);
     if (!song) return;
     const i = song.sections.findIndex((c) => c.id === section.id);
@@ -133,7 +157,7 @@ export function saveSection(songId, section) {
     }
     result = { ok: true };
   });
-  return result;
+  return result.ok ? written(ok) : result;
 }
 export const removeSection = (songId, sectionId) => update((s) => {
   const song = s.songs.find((x) => x.id === songId);
