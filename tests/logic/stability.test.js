@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { stabilityOf, outsideRange, outsideFlags } from '../../src/logic/stability.js';
+import { CONFIG } from '../../src/logic/config.js';
+import { stabilityOf, outsideRange, outsideFlags, spreadOf } from '../../src/logic/stability.js';
 
 // 20ms ごとに ms の長さぶん、fn(i) の高さを読む
 const run = (startT, ms, fn) => {
@@ -120,6 +121,87 @@ describe('stabilityOf', () => {
       expect(r.label).not.toBe('many');
       expect(r.label).not.toBe('none');
     });
+  });
+});
+
+// 読みの間が gap ms（16ms ≒ 1秒に 約60回）で、ms の長さぶん fn(i) の高さを読む
+const runAt = (gap, startT, ms, fn) => {
+  const out = [];
+  for (let i = 0; i * gap <= ms + 1e-9; i++) out.push({ t: startT + i * gap, midi: fn(i) });
+  return out;
+};
+
+describe('伸ばす 所が 少ない 歌い方（速い 曲）', () => {
+  it('130ms の 音を 16個 つなげて 歌う → short（メロディの 上下を ゆれと しない）', () => {
+    const notes = [57, 59, 60, 62, 64, 62, 60, 59, 57, 59, 60, 62, 64, 65, 64, 62];
+    const r = stabilityOf(legato(notes, 130));
+    expect(r).toEqual({ label: 'short', medianCents: null, stretches: 0 });
+  });
+  it('120ms ずつの 半音の 音階 → short', () => {
+    const notes = Array.from({ length: 16 }, (_, k) => 57 + k);
+    expect(stabilityOf(legato(notes, 120)).label).toBe('short');
+  });
+  it('600ms の 音 1つ ＋ 短い 音 → 600ms の 音だけで 測る', () => {
+    const long = run(0, 600, () => 57);
+    const shorts = legato([59, 60, 62, 64, 62, 60], 130).map((r) => ({ ...r, t: r.t + 620 }));
+    const r = stabilityOf([...long, ...shorts]);
+    expect(r.stretches).toBe(1);
+    expect(r.medianCents).toBe(0);
+    expect(r.label).toBe('few');
+  });
+  it('声が 無いときは、これまでどおり none', () => {
+    expect(stabilityOf(run(0, 1000, () => null)).label).toBe('none');
+  });
+});
+
+describe('とんだ 読み・装飾音を、大きな ゆれと しない', () => {
+  it('1.5秒の 同じ 高さの 中に、48ms だけ 12半音 とんだ 読み（16ms ごと 3読み）→ many に しない', () => {
+    const rs = runAt(16, 0, 1500, () => 60);
+    for (let i = 40; i < 43; i++) rs[i] = { ...rs[i], midi: 72 };
+    expect(stabilityOf(rs).label).not.toBe('many');
+  });
+  it('6読み つづけて とんだ 読み（16ms ごと）→ many に しない', () => {
+    const rs = runAt(16, 0, 1500, () => 60);
+    for (let i = 40; i < 46; i++) rs[i] = { ...rs[i], midi: 72 };
+    expect(stabilityOf(rs).label).not.toBe('many');
+  });
+  it('同じ 高さの 間に 80ms・2半音の 装飾音（57 → 59 → 57）→ many に しない', () => {
+    const rs = [...run(0, 600, () => 57), ...run(620, 80, () => 59), ...run(720, 600, () => 57)];
+    expect(stabilityOf(rs).label).not.toBe('many');
+  });
+  it('±60 セントの ビブラートは これまでどおり 1つの 音として 測る', () => {
+    const r = stabilityOf(legato([57, 59, 60], 600, vibrato(60)));
+    expect(r.stretches).toBe(3);
+    expect(r.medianCents).toBeGreaterThanOrEqual(38);
+    expect(r.medianCents).toBeLessThanOrEqual(46);
+  });
+  it('1つの まとまりの ゆれでは、中央値からの ずれを ±300 セントで 頭打ちに する', () => {
+    // 59・61 が 半分ずつ と、1つだけ 2オクターブ とんだ 読み：とんだ 読みの ずれは 300 として 数える
+    const st = [...Array.from({ length: 10 }, (_, i) => ({ t: i * 20, midi: i % 2 ? 61 : 59 })), { t: 200, midi: 84 }];
+    const clamped = [...st.slice(0, 10), { t: 200, midi: 64 }]; // 中央値 61 から +300 に あたる 64
+    expect(spreadOf(st)).toBeCloseTo(spreadOf(clamped), 6);
+  });
+});
+
+describe('長さの 測り方・おかしな 読み', () => {
+  it('1秒に 約60回の 読みで 400ms 歌った 音（24読み）→ 400ms と 数えて 測る（none に しない）', () => {
+    const rs = Array.from({ length: 24 }, (_, i) => ({ t: (i * 1000) / 60, midi: 60 }));
+    expect(stabilityOf(rs).label).toBe('few');
+  });
+  it('NaN・Infinity の 読みは 無視する（NaN を 出さない）', () => {
+    const rs = run(0, 1000, () => 60);
+    rs[10] = { ...rs[10], midi: NaN };
+    rs[20] = { ...rs[20], midi: Infinity };
+    rs[30] = { t: NaN, midi: 60 };
+    const r = stabilityOf(rs);
+    expect(r.label).toBe('few');
+    expect(r.medianCents).toBe(0);
+  });
+  it('minVoicedMs が 0 でも、読み 1つで NaN に ならない', () => {
+    const opts = { ...CONFIG.stage6.yt, minVoicedMs: 0, noteMinMs: 0, hopMs: 20 };
+    const r = stabilityOf([{ t: 0, midi: 60 }], opts);
+    expect(Number.isNaN(r.medianCents)).toBe(false);
+    expect(r.label).toBe('few');
   });
 });
 
