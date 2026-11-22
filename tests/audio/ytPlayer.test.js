@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadYouTubeApi, createYtPlayer, ytErrorKey } from '../../src/audio/ytPlayer.js';
+import { loadYouTubeApi, createYtPlayer, ytErrorKey, defaultLoadScript } from '../../src/audio/ytPlayer.js';
 import { STAGE6_TEXT } from '../../src/data/copy.js';
 import { findBanned } from '../../src/logic/words.js';
 
@@ -86,6 +86,47 @@ describe('loadYouTubeApi', () => {
     await expect(loadYouTubeApi({ loadScript, win })).rejects.toMatchObject({ name: 'YtLoadError' });
     expect(loadScript).toHaveBeenCalledTimes(2);
   });
+
+  test('失敗したら、もとの onYouTubeIframeAPIReady に戻す', async () => {
+    const prev = vi.fn();
+    win.onYouTubeIframeAPIReady = prev;
+    await expect(loadYouTubeApi({ loadScript: () => Promise.reject(new Error('x')), win })).rejects.toMatchObject({ name: 'YtLoadError' });
+    expect(win.onYouTubeIframeAPIReady).toBe(prev);
+  });
+
+  test('中止の合図が先に出ていたら、読まずに AbortError', async () => {
+    const loadScript = vi.fn(() => Promise.resolve());
+    const ac = new AbortController();
+    ac.abort();
+    await expect(loadYouTubeApi({ loadScript, win, signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(loadScript).not.toHaveBeenCalled();
+  });
+
+  test('読み込み中に中止 → AbortError（ほかの呼び出しは続く）', async () => {
+    const loadScript = vi.fn(() => Promise.resolve());
+    const ac = new AbortController();
+    const p1 = loadYouTubeApi({ loadScript, win, signal: ac.signal });
+    const p2 = loadYouTubeApi({ loadScript, win });
+    await Promise.resolve();
+    ac.abort();
+    await expect(p1).rejects.toMatchObject({ name: 'AbortError' });
+    const YT = { Player: class {} };
+    win.YT = YT;
+    win.onYouTubeIframeAPIReady();
+    await expect(p2).resolves.toBe(YT);
+  });
+});
+
+describe('defaultLoadScript', () => {
+  test('失敗したら script タグを消す（やりなおせる）', async () => {
+    const before = document.head.querySelectorAll('script').length;
+    const p = defaultLoadScript('https://example.invalid/x.js');
+    const tag = document.head.querySelector('script[src="https://example.invalid/x.js"]');
+    expect(tag).not.toBeNull();
+    tag.onerror();
+    await expect(p).rejects.toMatchObject({ name: 'YtLoadError' });
+    expect(document.head.querySelectorAll('script').length).toBe(before);
+  });
 });
 
 describe('createYtPlayer', () => {
@@ -111,6 +152,53 @@ describe('createYtPlayer', () => {
     const { p, fake } = await setup();
     fake.opts.events.onError({ data: 101 });
     await expect(p).rejects.toMatchObject({ name: 'YtPlayerError', code: 101 });
+  });
+
+  test('onReady の前の onError(101) で、偽の destroy が1回呼ばれる', async () => {
+    const { p, fake } = await setup();
+    fake.opts.events.onError({ data: 101 });
+    await expect(p).rejects.toMatchObject({ code: 101 });
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test('読み込み中に中止 → destroy 1回 + AbortError、あとから来た onReady は無視', async () => {
+    const ac = new AbortController();
+    const { p, fake } = await setup({ signal: ac.signal });
+    ac.abort();
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
+    fake.opts.events.onReady();
+    fake.opts.events.onError({ data: 101 });
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test('最初から中止済みなら、プレーヤーを作らず AbortError', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const yt = makeFakeYT();
+    const { p } = await setup({ signal: ac.signal }, yt);
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+    expect(yt.made.length).toBe(0);
+  });
+
+  test('destroy のあとは、どのメソッドも何もしない', async () => {
+    const { p, fake } = await setup();
+    fake.opts.events.onReady();
+    const player = await p;
+    fake.time = 5;
+    player.destroy();
+    fake.calls.length = 0;
+    player.play(); player.pause(); player.seekTo(3);
+    expect(player.currentSec()).toBe(0);
+    expect(player.duration()).toBe(0);
+    expect(player.availableRates()).toEqual([]);
+    expect(player.setRate(0.5)).toBe(1);
+    expect(fake.calls).toEqual([]);
+  });
+
+  test('origin は渡した win のものを使う', async () => {
+    const { fake } = await setup({ win: { location: { origin: 'https://example.test' } } });
+    expect(fake.opts.playerVars.origin).toBe('https://example.test');
   });
 
   test('onReady のあとの onError は onError コールバックへ', async () => {

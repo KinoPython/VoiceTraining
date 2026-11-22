@@ -37,7 +37,20 @@ export function defaultLoadScript(src) {
 // 同時に何回呼ばれても1回だけ読む。失敗は覚えない（次の呼び出しでやりなおす）
 const inFlight = new WeakMap(); // win → Promise
 
-export function loadYouTubeApi({
+const abortError = () => namedError('AbortError', '中止されました');
+
+// signal が中止されたら、この呼び出しだけ AbortError にする（読み込み自体は、ほかの呼び出しのために続ける）
+export function loadYouTubeApi({ signal, ...opts } = {}) {
+  if (!signal) return loadOnce(opts);
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    loadOnce(opts).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+function loadOnce({
   loadScript = defaultLoadScript,
   timeoutMs = CONFIG.stage6.yt.apiTimeoutMs,
   win = window,
@@ -76,23 +89,43 @@ export function loadYouTubeApi({
 // YT の状態番号 → 名前（-1 の未開始は無視する）
 const STATE_NAMES = { 1: 'playing', 2: 'paused', 0: 'ended', 3: 'buffering', 5: 'cued' };
 
-export function createYtPlayer(container, { videoId, YT, onState, onError } = {}) {
+export function createYtPlayer(container, { videoId, YT, onState, onError, signal, win = window } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
     let ready = false;
     let destroyed = false;
+    let settledEarly = false; // onReady の前に reject した（以後のイベントは無視）
     let raw = null;
 
+    // 二重に呼んでも1回だけ destroy する。失敗しても外へ投げない
+    const destroyRaw = () => {
+      if (destroyed) return;
+      destroyed = true;
+      try { raw?.destroy(); } catch { /* すでに壊れていても気にしない */ }
+    };
+    // onReady の前の失敗：iframe を片づけてから reject
+    const failEarly = (err) => {
+      if (ready || settledEarly) return;
+      settledEarly = true;
+      signal?.removeEventListener('abort', onAbort);
+      destroyRaw();
+      reject(err);
+    };
+    const onAbort = () => failEarly(abortError());
+
     const wrap = () => {
-      const availableRates = () => raw.getAvailablePlaybackRates?.() ?? [];
+      // destroy のあとは、何を呼ばれても何もしない
+      const live = (fn, fallback) => (...args) => (destroyed ? fallback : fn(...args));
+      const availableRates = live(() => raw.getAvailablePlaybackRates?.() ?? [], []);
       return {
-        play: () => raw.playVideo(),
-        pause: () => raw.pauseVideo(),
-        seekTo: (sec) => raw.seekTo(sec, true),
-        currentSec: () => raw.getCurrentTime(),
-        duration: () => raw.getDuration(),
+        play: live(() => raw.playVideo()),
+        pause: live(() => raw.pauseVideo()),
+        seekTo: live((sec) => raw.seekTo(sec, true)),
+        currentSec: live(() => raw.getCurrentTime(), 0),
+        duration: live(() => raw.getDuration(), 0),
         availableRates,
         // 使える速さの中でいちばん近いもの（同じ近さなら遅い方）に合わせ、実際の値を返す
-        setRate(rate) {
+        setRate: live((rate) => {
           const rates = availableRates();
           if (!rates.length) return 1;
           let best = rates[0];
@@ -103,32 +136,31 @@ export function createYtPlayer(container, { videoId, YT, onState, onError } = {}
           }
           raw.setPlaybackRate(best);
           return best;
-        },
-        destroy() {
-          if (destroyed) return;
-          destroyed = true;
-          raw.destroy();
-        },
+        }, 1),
+        destroy: destroyRaw,
       };
     };
 
+    signal?.addEventListener('abort', onAbort, { once: true });
     raw = new YT.Player(container, {
       host: 'https://www.youtube-nocookie.com',
       videoId,
-      playerVars: { playsinline: 1, rel: 0, origin: location.origin, controls: 1 },
+      playerVars: { playsinline: 1, rel: 0, origin: win.location.origin, controls: 1 },
       events: {
         onReady: () => {
+          if (settledEarly) return; // 中止・失敗のあとに来た ready は無視
           ready = true;
+          signal?.removeEventListener('abort', onAbort);
           resolve(wrap());
         },
         onStateChange: (e) => {
           const name = STATE_NAMES[e?.data];
-          if (name) onState?.(name);
+          if (name && !destroyed) onState?.(name);
         },
         onError: (e) => {
           const code = e?.data;
-          if (!ready) reject(namedError('YtPlayerError', `YouTube のエラー ${code}`, { code }));
-          else onError?.(code);
+          if (ready) onError?.(code);
+          else failEarly(namedError('YtPlayerError', `YouTube のエラー ${code}`, { code }));
         },
       },
     });
