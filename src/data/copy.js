@@ -54,4 +54,12 @@ export const STAGE6_TEXT = {
   confirmDelete: 'この 曲を 消しますか？（スマホの中の ファイルも 消えます）',
   toSong: '曲の 画面へ',
   remove: '消す',
+  ytNotEmbeddable: 'この 動画は 持ち主の 設定で、アプリの 中では 流せません',
+  ytNotFound: 'この 動画は 見つかりません。アドレスを 確かめて ください',
+  ytBadId: 'アドレスを 読み取れません',
+  ytNoReferer: 'この 画面から YouTube を 開けませんでした。ブラウザで 開きなおして みて ください',
+  ytOther: 'YouTube を 再生できませんでした',
+  ytOffline: '電波が ない ときは YouTube は 使えません。買った 曲の ファイルは 電波なしで 使えます',
+  ytEarphone: '曲に 合わせて 歌う ときは、イヤホンが 必要です',
+  ytNotice: 'YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません',
 };
