@@ -1,7 +1,7 @@
 // 段6 好きな曲：1曲の練習。区間を選んで「聞く」「歌う」。合いぐあいは「目安」
 // 曲のファイル・お手本の線はスマホの中だけ。録った声は保存しない（高さの数字の並びだけ残す）
 import { go } from '../router.js';
-import { button, heading, note } from '../ui/components.js';
+import { button, heading, note, safetyList } from '../ui/components.js';
 import { createPitchGraph } from '../ui/pitchGraph.js';
 import { createSongOverview } from '../ui/songOverview.js';
 import { createMicSession } from '../ui/practiceLoop.js';
@@ -15,12 +15,13 @@ import { toleranceFor } from '../logic/targets.js';
 import { noteLabel } from '../logic/notes.js';
 import { CONFIG } from '../logic/config.js';
 import { todayString } from '../logic/today.js';
-import { STAGE6_TEXT as T } from '../data/copy.js';
+import { STAGE6_TEXT as T, SAFETY_LINES } from '../data/copy.js';
 
 const defaultDeps = { openMic, createSongPlayer, getFile };
 
 const TEXT = {
-  keyAdvice: (n) => `この 曲は、キーを ${n}つ 下げると 楽に なりそう です（目安）。カラオケでは キーを 下げて みましょう`,
+  keyAdvice: (n) => `この 曲は、カラオケの キーを ${n}つ（半音 ${n}つ）下げると 楽に なりそう です（目安）。`,
+  octaveNote: 'お手本より 1オクターブ 下・上で 歌っても 大丈夫です',
   lineNote: 'お手本の 線は 目安です。線を 指で なぞって、練習する 区間を 選びます',
   pickFirst: '先に 線を なぞって 区間を 選んで ください',
   saveSection: '区間を 保存',
@@ -32,13 +33,14 @@ const TEXT = {
   rate: '速さ',
   source: '聞く音',
   earphone: 'イヤホンを つけましたか？',
-  earphoneWhy: 'イヤホンが ないと、マイクが 曲の 音を ひろって しまいます',
+  earphoneWhy: 'イヤホンが ないと、マイクが 曲の 音を ひろって しまいます。片方の 耳だけ つけると、自分の 声が 聞きとりやすい ことも あります。',
+  volume: '音量は 小さめに して、自分の 声も 聞こえる くらいに しましょう',
   wearing: 'つけた',
   cancel: 'やめる',
   singing: '曲に 合わせて 歌って ください',
   cantPlay: '曲を 流せませんでした。もう一度 押して みてください',
   ratio: (pct) => `いまの 合いぐあい：${pct}%（目安）`,
-  previous: (pct) => `前回：${pct}%`,
+  previous: (pct) => `前回：${pct}%（目安。その日の 声の 調子で かわります）`,
   noModel: 'この 区間には お手本の 声が ありません',
   overCare: '高い 所は 無理に のばさないで ください',
   again: 'もう一度 歌う',
@@ -46,12 +48,11 @@ const TEXT = {
   finish: 'おわる',
   toList: '曲の 一覧へ',
   stopped: 'マイクが 止まりました。',
-  painCare: '苦しい・痛い ときは やめましょう。のどの 痛みや 声がれが 続く ときは、耳鼻咽喉科で 相談して ください',
 };
 
 const RATE_LABEL = (r) => `${r}倍`;
 const SOURCE_LABEL = { file: '原曲', vocal: '歌声だけ' };
-const VERDICT_TEXT = { ok: '合って いた', high: '高め', low: '低め', none: '声が 聞こえませんでした' };
+const VERDICT_TEXT = { ok: '合って いた', high: '少し 高め（少し 下げて みよう）', low: '少し 低め（少し 上げて みよう）', none: '声が 聞こえませんでした' };
 const noop = () => {};
 const percent = (ratio) => Math.round(ratio * 100);
 const DEFAULT_WINDOW_MS = 6000; // 線グラフのふつうの窓（pitchGraph.js と同じ）
@@ -237,9 +238,9 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     const items = [title()];
     if (song.keyAdvice > 0) items.push(note(TEXT.keyAdvice(song.keyAdvice)));
     items.push(
-      note(TEXT.lineNote), canvas, sectionButtons(), button(TEXT.saveSection, saveCurrent), message,
+      note(TEXT.lineNote), note(TEXT.octaveNote), canvas, sectionButtons(), button(TEXT.saveSection, saveCurrent), message,
       button(TEXT.listen, listen), button(TEXT.stop, stopEverything), button(TEXT.sing, askEarphone),
-      ...settingRows(), note(T.highCare), note(TEXT.painCare), button(TEXT.finish, finishSession),
+      ...settingRows(), note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.finish, finishSession),
     );
     root.replaceChildren(...items);
   }
@@ -251,7 +252,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     stopEverything();
     message = null;
     root.replaceChildren(
-      title(), note(TEXT.earphone), note(TEXT.earphoneWhy),
+      title(), note(TEXT.earphone), note(TEXT.earphoneWhy), note(TEXT.volume),
       button(TEXT.wearing, () => (session.mic ? startSinging(session.mic) : session.open())),
       button(TEXT.cancel, () => showMain('')),
     );

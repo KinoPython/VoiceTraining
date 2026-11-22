@@ -1,6 +1,5 @@
 import './styles.css';
-import { register, start, setGuard, go } from './router.js';
-import { button, heading } from './ui/components.js';
+import { register, start, setGuard } from './router.js';
 import { renderHome } from './screens/home.js';
 import { renderWelcome, guardWelcome } from './screens/welcome.js';
 import { renderSafety } from './screens/safety.js';

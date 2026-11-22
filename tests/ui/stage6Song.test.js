@@ -125,7 +125,10 @@ describe('段6 曲で練習する画面', () => {
     addSong(song({ keyAdvice: 2 }));
     const root = await open(makeDeps());
     expect(root.textContent).toContain('曲A');
-    expect(root.textContent).toContain('この 曲は、キーを 2つ 下げると 楽に なりそう です（目安）。カラオケでは キーを 下げて みましょう');
+    expect(root.textContent).toContain('この 曲は、カラオケの キーを 2つ（半音 2つ）下げると 楽に なりそう です（目安）。');
+    expect(root.textContent).toContain('お手本より 1オクターブ 下・上で 歌っても 大丈夫です');
+    expect(root.textContent).toContain('目安として 4週間ほど');
+    expect(root.textContent).toContain('急に 声が 出なく なった');
     expect(findBanned(root.textContent)).toEqual([]);
   });
 
@@ -166,6 +169,7 @@ describe('段6 曲で練習する画面', () => {
     const root = await open(makeDeps());
     await click(root, '● 歌う');
     expect(root.textContent).toContain('イヤホンを つけましたか？');
+    expect(root.textContent).toContain('音量は 小さめに');
     expect(openMic).not.toHaveBeenCalled();
     expect(player.play).not.toHaveBeenCalled();
     await click(root, 'つけた');
@@ -206,7 +210,7 @@ describe('段6 曲で練習する画面', () => {
     }
     player.end();
     await settle();
-    expect(root.textContent).toContain('高め');
+    expect(root.textContent).toContain('少し 高め（少し 下げて みよう）');
     expect(root.textContent).toMatch(/いまの 合いぐあい：0%（目安）/);
   });
 
@@ -346,7 +350,7 @@ describe('段6 曲で練習する画面', () => {
     const firstVoiced = graphLog.pushes.find((p) => p.midi !== null).t;
     expect(firstVoiced).toBe(0);
     expect(firstVoiced).toBeGreaterThanOrEqual(last - windowMs); // 捨てられずに見えている
-    expect(root.textContent).toMatch(/前回：50%/);
+    expect(root.textContent).toMatch(/前回：50%（目安。その日の 声の 調子で かわります）/);
   });
 
   test('短い区間は、ふつうの窓（6秒）のまま', async () => {

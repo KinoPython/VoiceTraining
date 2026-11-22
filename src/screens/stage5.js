@@ -35,7 +35,7 @@ const TEXT = {
   stopped: 'マイクが 止まりました。',
 };
 
-const VERDICT_TEXT = { ok: '合って いた', high: '高め', low: '低め', none: '声が 聞こえませんでした' };
+const VERDICT_TEXT = { ok: '合って いた', high: '少し 高め（少し 下げて みよう）', low: '少し 低め（少し 上げて みよう）', none: '声が 聞こえませんでした' };
 // 歌い終わりの声をひろうための余白
 const TAIL_MS = 300;
 

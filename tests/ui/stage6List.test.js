@@ -83,6 +83,18 @@ describe('段6 曲の一覧と追加', () => {
     expect(location.hash).toBe('#vocalGuide');
   });
 
+  test('曲を足す画面に、使ってよい曲と「スマホの外に出さない」の一言が出る', async () => {
+    const root = await open(makeDeps());
+    byLabel(root, '＋ 曲を 足す').click();
+    expect(root.textContent).toContain('自分で 買った 曲や、自分の CD から 取り込んだ 曲を 使って ください。ファイルと お手本の 線は この スマホの 中だけで 使い、外には 送りません。');
+  });
+
+  test('入口の注意に、音量と休む目安が出る', async () => {
+    const root = await open(makeDeps());
+    expect(root.textContent).toContain('音量は 小さめに して、自分の 声も 聞こえる くらいに しましょう');
+    expect(root.textContent).toContain('何回か 歌ったら、ひと休み しましょう');
+  });
+
   test('読めないファイルは「読めません」と出て、曲は増えない', async () => {
     const deps = makeDeps({ decode: vi.fn(async () => { throw new Error('bad'); }) });
     const root = await open(deps);

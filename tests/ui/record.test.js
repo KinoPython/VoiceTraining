@@ -71,6 +71,11 @@ describe('きろく', () => {
     expect(findBanned(t)).toEqual([]);
   });
 
+  test('段6で曲名が無い古い記録は「（曲名なし）」で出る', () => {
+    seed({ history: [{ date: '2026-11-20', stage: 6, tries: 2, successes: 1, value: 0.5 }] });
+    expect(open().textContent).toContain('好きな 曲：（曲名なし）　2回 中 1回 できた');
+  });
+
   test('声の地図があれば鍵盤を出す', () => {
     seed({ range });
     expect(open().querySelector('svg.keyboard')).not.toBeNull();

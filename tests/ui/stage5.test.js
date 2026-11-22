@@ -103,7 +103,7 @@ describe('段5 短いメロディ', () => {
     const rows = [...root.querySelectorAll('li')].map((li) => li.textContent);
     expect(rows).toHaveLength(3);
     expect(rows[0]).toContain('合って いた');
-    expect(rows[1]).toContain('高め');
+    expect(rows[1]).toContain('少し 高め（少し 下げて みよう）');
     expect(rows[2]).toContain('合って いた');
   });
 

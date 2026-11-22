@@ -99,6 +99,7 @@ export function renderStage6List(root, params, deps = defaultDeps) {
 
     root.replaceChildren(
       heading(T.add),
+      note(T.rights),
       titleInput,
       ...picker('file', T.pickFile),
       ...picker('vocal', T.pickVocal),

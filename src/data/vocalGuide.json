@@ -2,30 +2,57 @@
   "title": "歌声だけの ファイルの 作り方",
   "intro": "パソコンで、曲から 歌声だけを 取り出した ファイルを 作る 方法です。この ファイルが あると、お手本の 線が きれいに 出やすく なります（目安）。使う ソフトは、無料で 使える「Ultimate Vocal Remover（UVR）」です。",
   "pcSongSteps": [
-    "お金を はらって 買った 曲（iTunes Store など）の ファイルを 使います。Apple Music などの 定額で 聞く 曲は、保護されて いて、ファイルとして 取り出せません。",
-    "Windows：Apple Music アプリの「iTunes Store」から「購入済み」を 開き、曲を ダウンロードします。ふつうは「ミュージック」フォルダの 中の「iTunes」→「iTunes Media」に 入ります。見つからない ときは、エクスプローラーで 曲名を 検索します。",
-    "Mac：「ミュージック」アプリで 曲を 選び、メニューの「ファイル」→「Finder で 表示」を 押します。この 項目が 出ない ときは、曲が パソコンの 中に ない ことが あります。",
-    "CD の 曲や、すでに 持っている 曲の ファイルを 使っても かまいません。"
+    "Apple Music などの 定額で 聞く 曲は、ダウンロードしても 保護（コピー防止）が かかって いて、ほかの ソフトでは 使えません。保護を 外す ことも しないで ください。iTunes Store で 買った 曲は、保護の ない ファイル（iTunes Plus）です。",
+    "Windows：Apple Music アプリで、Apple アカウントに サインインし、パソコンを 認証して おきます。左の「iTunes Store」→「購入済み」から 曲を ダウンロードします。曲を 右クリックして「エクスプローラーで 表示」を 押すと、ファイルの ある 場所が 開きます（表示の 名前は バージョンで ちがう ことが あります）。この 項目が ない ときは、曲が パソコンの 中に ない ことが あります。",
+    "Mac：「ミュージック」アプリで、iPhone と 同じ Apple アカウントで サインインします。曲が パソコンに ない ときは、先に ダウンロードします。曲を 選び、メニューの「ファイル」→「Finder で 表示」を 押します。この 項目が 出ない ときは、曲が パソコンの 中に ない ことが あります。",
+    "自分で 買った CD から、パソコンに 取り込んだ 曲の ファイルも 使えます。コピー防止の しくみ（保護）を 外す ソフトや、ネットで 見つけた 曲の ファイルは 使わないで ください。"
   ],
   "steps": [
-    "UVR の 公式ページ（GitHub）から、自分の パソコンに 合う ものを ダウンロードして 入れます。Windows は 10 以上、Mac は macOS Big Sur 以上が 対象です。",
-    "UVR を 開き、曲の ファイルを 選びます。WAV 以外の ファイルは、別の 部品（FFmpeg）が 必要な ことが あります。",
+    "UVR の 公式ページ（GitHub）から、自分の パソコンに 合う ものを ダウンロードして 入れます。Windows は 10 以上、Mac は macOS Big Sur 以上が 対象です。Mac は、M1 などの チップ用と Intel 用で ファイルが 分かれて います。",
+    "UVR を 開き、曲の ファイルを 選びます。WAV 以外の ファイルで エラーが 出る ときは、別の 部品（FFmpeg）が 足りない ことが あります。むずかしい ときは、使わなくても 大丈夫です。",
     "書き出す 場所（フォルダ）を 決めて、歌声と 伴奏を 分ける 設定で「Start Processing」を 押します。画面の 表示は、バージョンで ちがう ことが あります。",
     "できあがった ファイルの うち、歌声の ほうを 使います。伴奏の ほうは 使いません。",
-    "歌声の ファイルを、iPhone の「ファイル」アプリで 見える 場所（iCloud Drive など）に 入れます。",
-    "こえトレの「曲の 画面」で「歌声だけの ファイルを 選ぶ」を 押して、そのファイルを 選びます。"
+    "歌声の ファイルを、iCloud Drive など、iPhone の「ファイル」アプリで 見える 場所に 入れます（パソコンと iPhone で 同じ Apple アカウントに サインインし、iCloud Drive を オンに します）。共有フォルダや、リンクで の 共有には 入れないで ください。",
+    "こえトレの「＋ 曲を 足す」で「歌声だけの ファイルを 選ぶ」を 押して、その ファイルを 選びます。"
   ],
   "cautions": [
-    "作った ファイルは 自分で 使う だけに して、人に 渡したり ネットに 上げたり しないで ください。",
-    "YouTube など、ネットの 動画から 曲を 取り出す ことは しないで ください。",
+    "自分で 楽しむ ための コピーは、著作権法で 認められて いる（私的使用・30条）と されて います。作った 歌声と 伴奏の ファイルは、自分で 使う だけに して、人に 渡したり、SNS や 動画サイトに 上げたり しないで ください。使わない 伴奏の ファイルは、消して おくと 安心です。くわしい ことは、文化庁の 案内などで 確かめて ください。",
+    "YouTube など ネットの 動画や、定額の 音楽サービスから、曲を 取り出したり 録音したり しないで ください。",
     "歌声は きれいに 分かれない ことも あります。そのときは、お手本の 線は 目安として 使って ください。",
-    "パソコンの ソフトは、こえトレとは 別の 人たちが 作った ものです。入れる ときは 公式ページから 入れて ください。うまく 動かない ときは、使わなくても 大丈夫です。",
-    "苦しい・痛い ときは やめましょう。のどの 痛みや 声がれが 続く ときは、耳鼻咽喉科で 相談して ください。"
+    "パソコンの ソフトは、こえトレとは 別の 人たちが 作った ものです。入れる ときは 公式ページから 入れて ください。うまく 動かない ときは、使わなくても 大丈夫です。Mac で 開けない と 出た ときは、パソコンの 安全の 設定を 切らないで ください。そのときは、使わなくても 大丈夫です。",
+    "苦しい・痛い ときは やめましょう。のどの 痛みや 声がれが 続く とき（目安として 4週間ほど）は、耳鼻咽喉科で 相談して ください。急に 声が 出なく なった・強い 痛みが ある ときは、早めに 耳鼻咽喉科へ。"
   ],
   "sources": [
-    { "title": "Ultimate Vocal Remover GUI（公式 GitHub。無料・MIT ライセンス・ダウンロード先）", "url": "https://github.com/Anjok07/ultimatevocalremovergui", "publisher": "Anjok07 ほか（UVR 開発者）" },
-    { "title": "Redownload music from the iTunes Store on your PC", "url": "https://support.apple.com/120553", "publisher": "Apple サポート" },
-    { "title": "Music ユーザガイド（Mac）：曲を Finder で 表示", "url": "https://support.apple.com/guide/music/mus69248042d/mac", "publisher": "Apple サポート" }
+    {
+      "title": "Ultimate Vocal Remover GUI（公式 GitHub。無料・MIT ライセンス・ダウンロード先）",
+      "url": "https://github.com/Anjok07/ultimatevocalremovergui",
+      "publisher": "Anjok07 ほか（UVR 開発者）"
+    },
+    {
+      "title": "Redownload music from the iTunes Store on your PC",
+      "url": "https://support.apple.com/120553",
+      "publisher": "Apple サポート"
+    },
+    {
+      "title": "Music ユーザガイド（Mac）：曲を Finder で 表示",
+      "url": "https://support.apple.com/guide/music/mus69248042d/mac",
+      "publisher": "Apple サポート"
+    },
+    {
+      "title": "Apple Music ユーザガイド（Windows）：ファイルの 場所",
+      "url": "https://support.apple.com/guide/music-windows/mus69248042d/windows",
+      "publisher": "Apple サポート"
+    },
+    {
+      "title": "iTunes Plus（用語の 説明）",
+      "url": "https://support.apple.com/guide/music/aside/glosf8b7af70/mac",
+      "publisher": "Apple サポート"
+    },
+    {
+      "title": "iCloud Drive を 設定する",
+      "url": "https://support.apple.com/111764",
+      "publisher": "Apple サポート"
+    }
   ],
   "updatedOn": "2026-11-22"
 }

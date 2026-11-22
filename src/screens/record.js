@@ -96,7 +96,7 @@ function stageLine(stage, list) {
 // 段6は曲ごとに1行：回数は足し、合いぐあいは「回数で重みをつけた平均」にする
 function stage6Lines(list) {
   const bySong = new Map();
-  for (const h of list) bySong.set(h.songTitle, [...(bySong.get(h.songTitle) ?? []), h]);
+  for (const h of list) bySong.set(h.songTitle ?? '（曲名なし）', [...(bySong.get(h.songTitle ?? '（曲名なし）') ?? []), h]);
   return [...bySong.entries()].map(([title, items]) => {
     const tries = sum(items, 'tries');
     const weighted = items.reduce((total, h) => total + h.value * h.tries, 0);

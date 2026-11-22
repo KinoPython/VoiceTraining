@@ -14,7 +14,9 @@ describe('歌声だけのファイルの作り方', () => {
   beforeEach(() => { location.hash = ''; });
 
   test('必ず入れる一文がある', () => {
-    expect(open().textContent).toContain('作った ファイルは 自分で 使う だけに して、人に 渡したり ネットに 上げたり しないで ください。');
+    const t = open().textContent;
+    expect(t).toContain('自分で 使う だけに して、人に 渡したり、SNS や 動画サイトに 上げたり しないで ください。');
+    expect(t).toContain('私的使用・30条');
   });
 
   test('出典は https のリンクで、公式 GitHub を含む', () => {
@@ -33,14 +35,22 @@ describe('歌声だけのファイルの作り方', () => {
     expect(root.querySelectorAll('ol li').length).toBe(guide.pcSongSteps.length + guide.steps.length);
   });
 
+  test('保護を外さない・人に渡さない注意と、iTunes Plus の説明がある', () => {
+    const t = open().textContent;
+    expect(t).toContain('保護を 外す ことも しないで ください');
+    expect(t).toContain('iTunes Plus');
+    expect(t).toContain('共有フォルダや、リンクで の 共有には 入れないで ください');
+    expect(t).toContain('安全の 設定を 切らないで ください');
+  });
+
   test('禁止語が無い', () => {
     expect(findBanned(open().textContent)).toEqual([]);
   });
 
-  test('「曲の 画面へ もどる」で段6の一覧へ', () => {
+  test('「曲の 一覧へ もどる」で段6の一覧へ', () => {
     const root = open();
     register('stage6', () => {});
-    [...root.querySelectorAll('button')].find((b) => b.textContent === '曲の 画面へ もどる').click();
+    [...root.querySelectorAll('button')].find((b) => b.textContent === '曲の 一覧へ もどる').click();
     expect(location.hash).toBe('#stage6');
   });
 });

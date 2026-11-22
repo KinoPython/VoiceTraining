@@ -9,7 +9,7 @@ export const VOCAL_GUIDE_TEXT = {
   cautionHead: '注意',
   sources: '出典',
   updated: (d) => `最終更新日：${d}`,
-  back: '曲の 画面へ もどる',
+  back: '曲の 一覧へ もどる',
 };
 const T = VOCAL_GUIDE_TEXT;
 
