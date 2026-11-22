@@ -81,6 +81,8 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   let take = null; // 歌っている1回分 { section, previous, readings, graph, canvas, clock, mic }。歌っていなければ null
   let tries = 0; // 歌い終えて、声が聞こえた回の数
   let historySaved = false;
+  // 「つけた」でマイクを待っている印。待つ間に「やめる」を押したら、開いたマイクで歌い始めない
+  let micWanted = false;
 
   const title = () => heading(song ? song.title : T.title);
   const setMessage = (text) => { if (message) message.textContent = text; };
@@ -381,8 +383,12 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     message = null;
     controls.replaceChildren(
       note(TEXT.earphone), note(TEXT.earphoneWhy), note(TEXT.volume),
-      button(TEXT.wearing, () => (session.mic ? startSinging(session.mic) : session.open())),
-      button(TEXT.cancel, () => showControls('')),
+      button(TEXT.wearing, () => {
+        micWanted = true;
+        if (session.mic) startSinging(session.mic);
+        else session.open();
+      }),
+      button(TEXT.cancel, () => { micWanted = false; showControls(''); }),
     );
   }
 
@@ -394,7 +400,9 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
 
   function startSinging(mic) {
     // マイクが開くのを待つ間に、離れた・エラーになった・区間が消えたときは歌わない
-    if (disposed || !player || !isValid(selection)) return session.release();
+    const wanted = micWanted;
+    micWanted = false;
+    if (!wanted || disposed || !player || !isValid(selection)) return session.release();
     stopPoll();
     const section = { ...selection };
     const previous = section.dirty ? null : savedSection(section.sectionId); // 範囲を動かしたあとは前回の線と合わない
@@ -406,10 +414,15 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     if (previous?.lastLine) graph.setGhost(previous.lastLine); // 前回の自分の線を薄く重ねる
     message = null;
     controls.replaceChildren(note(TEXT.singing), canvas, button(TEXT.stop, cancelTake));
-    take = { section, previous, readings: [], graph, canvas, clock: createSongClock(), mic };
+    const seekSec = Math.max(0, section.startSec - CONFIG.stage6.leadInSec);
+    // landed：seekTo の先に位置が届いた印。playedAfterSeek：seekTo のあとに playing が来た印。waitedPolls：届くまで待った回数
+    take = {
+      section, previous, readings: [], graph, canvas, clock: createSongClock(), mic,
+      seekSec, landed: false, playedAfterSeek: false, waitedPolls: 0,
+    };
     mic.onFrame((midi) => onSingFrame(midi));
     // 区間の少し前から1回だけ流す
-    player.seekTo(Math.max(0, section.startSec - CONFIG.stage6.leadInSec));
+    player.seekTo(seekSec);
     player.play();
     pollId = d.setInterval(singTick, CONFIG.stage6.yt.pollMs);
   }
@@ -418,21 +431,48 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   function singTick() {
     if (!take || !player) return;
     const nowMs = d.now();
-    take.clock.update(player.currentSec(), nowMs, lastState === 'playing', rate);
+    const readSec = player.currentSec();
+    if (!take.landed && !checkLanded(readSec)) return;
+    take.clock.update(readSec, nowMs, lastState === 'playing', rate);
     const { startSec, endSec } = take.section;
     if (loopAction(take.clock.estimate(nowMs), startSec, endSec, false) === 'stop') endTake();
   }
 
-  // 歌っている間のプレーヤーの状態。止まった（paused）ときは時計が止まるだけ。
-  // 区間の終わりが動画の終わりと同じだと、位置が少し手前のまま ended になるので、そこで終える
+  // YouTube は seekTo のすぐあと、しばらく古い位置を返すことがある。古い位置が区間の終わりより後ろだと
+  // すぐ「終わり」になり、区間の中ほどだと時刻がずれる。位置が seekTo の先に届くまでは、時計も終わりも見ない。
+  // いつまでも届かない（seekWaitMs）ときは、待つのをやめて、声の無い回として終える
+  function checkLanded(readSec) {
+    const { seekSec, section } = take;
+    const near = readSec >= seekSec - 0.5 && readSec < section.endSec;
+    if (near || (take.playedAfterSeek && readSec < section.endSec)) {
+      take.landed = true;
+      return true;
+    }
+    take.waitedPolls += 1;
+    if (take.waitedPolls * CONFIG.stage6.yt.pollMs >= CONFIG.stage6.yt.seekWaitMs) endTake();
+    return false;
+  }
+
+  // 歌っている間のプレーヤーの状態。位置が届く前の状態の変化（seekTo の途中）は見ない。
+  // 区間の終わりが動画の終わりと同じだと、位置が少し手前のまま ended になるので、そこで終える。
+  // 一時停止（YouTube の画面のボタンなど）したら、時刻がずれるので今回は数えない
   function onSingState(name) {
+    if (name === 'playing') take.playedAfterSeek = true;
+    if (!take.landed) return;
     if (name === 'ended') endTake();
+    else if (name === 'paused') interruptTake();
+  }
+
+  function interruptTake() {
+    abandonTake();
+    stopPoll();
+    showControls(T.ytPausedTake);
   }
 
   // マイクの1コマ。時刻は曲の位置（区間の始まりから ms）で測る。ゆっくり流しても前回の線と同じ目盛りになる。
   // 声はマイクの遅れのぶん遅れて届くので、その分を引く（遅れは本当の時間なので、曲の位置では速さをかける）
   function onSingFrame(midi) {
-    if (!take) return;
+    if (!take?.landed) return; // 位置が届くまでは、曲のどこなのか分からない
     const songSec = take.clock.estimate(d.now());
     const t = (songSec - take.section.startSec) * 1000 - CONFIG.stage6.latencyMs * rate;
     if (t < 0) return take.graph.push(t, null); // 前奏の間は数えない（グラフの時計だけ進める）
