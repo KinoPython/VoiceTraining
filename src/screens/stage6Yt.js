@@ -8,7 +8,7 @@ import { createMicSession } from '../ui/practiceLoop.js';
 import { openMic } from '../audio/mic.js';
 import { loadYouTubeApi, createYtPlayer, ytErrorKey } from '../audio/ytPlayer.js';
 import { createSongClock, loopAction } from '../logic/ytClock.js';
-import { stabilityOf, outsideRange } from '../logic/stability.js';
+import { stabilityOf, outsideFlags } from '../logic/stability.js';
 import { lineToGhost } from '../logic/songScore.js';
 import { loadState, getSong, saveSection, removeSection, addHistory, newId } from '../storage/store.js';
 import { CONFIG } from '../logic/config.js';
@@ -34,8 +34,11 @@ const DEFAULT_WINDOW_MS = 6000; // 線グラフのふつうの窓（pitchGraph.j
 const LAND_BEFORE_SEC = 0.5;
 const LAND_AFTER_SEC = 1.0;
 const sectionMsOf = (section) => (section.endSec - section.startSec) * 1000;
-// ゆれの目安 → 結果の文（'none' は別の文にする。声が無いのに「まっすぐ」と言わないため）
-const WOBBLE_TEXT = { steady: T.ytSteady, some: T.ytSome, wobbly: T.ytWobbly };
+// ゆれの目安 → 結果の文（'none' は別の文にする。声が無いのに「少なめ」と言わないため）
+const WOBBLE_TEXT = { few: T.ytFew, normal: T.ytNormal, many: T.ytMany };
+// 苦しい・痛い ときは やめる／声がれが 続くときは 耳鼻咽喉科、の 2つ。歌う 直前と 歌った あとに 出す
+// （ボタンの 並びの いちばん 下だけだと、スマホでは 見えない ことが 多いため）
+const SING_SAFETY = SAFETY_LINES.slice(0, 2);
 
 // エラー番号の種類 → 案内の文
 const PLAYER_ERROR_TEXT = {
@@ -136,7 +139,9 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     frame.append(holder);
     controls = document.createElement('div');
     controls.append(note(T.ytLoading));
-    root.replaceChildren(title(), note(T.ytButton), note(T.ytEarphone), frame, controls);
+    // 実際に YouTube に つながる この画面で、何が 送られるかを 知らせる（足す 画面だけでは 見ない 人が いるため）。
+    // イヤホンの 文は 段6①と 同じ（音量の 注意も ふくむ）
+    root.replaceChildren(title(), note(T.ytNotice), note(T.earphone), frame, controls);
     try {
       const YT = await d.loadYouTubeApi({ signal: abort.signal });
       if (disposed) return; // 離れたあとに読み終わっても、何も作らない
@@ -385,7 +390,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     stop();
     message = null;
     controls.replaceChildren(
-      note(TEXT.earphone), note(TEXT.earphoneWhy), note(TEXT.volume),
+      note(TEXT.earphone), note(TEXT.earphoneWhy), note(TEXT.volume), safetyList(SING_SAFETY),
       button(TEXT.wearing, () => {
         micWanted = true;
         if (session.mic) startSinging(session.mic);
@@ -538,7 +543,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     run.graph.push(sectionMsOf(run.section), null); // 時計を区間の終わりまで進め、区間ぜんぶを窓に入れる
     const wobble = stabilityOf(run.readings);
     const kept = recordTake(wobble, run);
-    showTakeResult(wobble, outsideRange(run.readings, range), run, kept);
+    showTakeResult(wobble, outsideFlags(run.readings, range), run, kept);
   }
 
   // 声が聞こえた回だけ数え、保存した区間なら今回の線を残す（声そのものは残さない）。
@@ -550,12 +555,17 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     return saveSection(songId, { ...previous, lastLine: lineToGhost(readings), lastRatio: null }, WHICH).ok;
   }
 
+  // 地図の外は、読みの 数を 出さず「あった」ことだけ 上・下 べつべつに 出す（数は 1秒に 約60回の 読みの 数で、
+  // 何十回も 外れたと 読まれやすいため）。「無理に のばさない」は 上に 出た ときだけ
   function showTakeResult(wobble, outside, { canvas }, kept) {
     const items = [canvas];
     if (wobble.label === 'none') items.push(note(T.ytNoVoice));
-    else items.push(note(WOBBLE_TEXT[wobble.label]), note(T.ytWobbleNote));
-    if (outside.above + outside.below > 0) items.push(note(T.ytOutside(outside.above, outside.below)), note(TEXT.overCare));
+    else items.push(note(WOBBLE_TEXT[wobble.label]), note(T.ytWobbleNote), note(T.ytWobbleKinds));
+    if (outside.above) items.push(note(T.ytOutsideAbove), note(TEXT.overCare));
+    if (outside.below) items.push(note(T.ytOutsideBelow));
     if (!kept) items.push(note(T.saveFailedOther));
+    // 同じ 区間を くり返し 歌いやすい 画面なので、のどを 使いすぎない 一言と 安全の 一言を ボタンの 前に 出す
+    items.push(note(T.highCare), safetyList(SING_SAFETY));
     items.push(button(TEXT.again, askEarphone), button(TEXT.back, () => showControls('')), button(TEXT.finish, () => go('stage6')));
     message = null;
     controls.replaceChildren(...items);

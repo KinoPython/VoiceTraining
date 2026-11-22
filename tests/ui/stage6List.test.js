@@ -424,12 +424,33 @@ describe('段6② 曲に YouTube を足す', () => {
     await settle();
   }
 
-  test('追加画面に YouTube の入力欄と ytNotice が出て、禁止の言葉がない', async () => {
+  // 文の 並び：アドレスの 欄 → ytRights → ytNotice（YouTube から 取り出さない・録音しない を 欄の すぐ下に）
+  function expectYtLines(root) {
+    const input = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    expect(input).not.toBeNull();
+    const p = (text) => [...root.querySelectorAll('p')].find((el) => el.textContent === text);
+    const rights = p('YouTube の 動画は、アプリの 中の YouTube の プレーヤーで 流すだけです。動画から 曲を 取り出したり、録音したり しないで ください。歌手や レコード会社の 公式の 動画を 選ぶと 安心です');
+    const notice = p('YouTube で 練習する ときは、YouTube の 公式の プレーヤーを 読み込みます。このとき YouTube に つながり、見た 動画などの 情報が YouTube（Google）の 決まりで 送られます。マイクの 声は スマホの 外に 出ません。曲の ダウンロードや 録音は しません');
+    expect(rights).toBeTruthy();
+    expect(notice).toBeTruthy();
+    expect(input.compareDocumentPosition(rights) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(rights.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 「クッキーなし」「追跡なし」のような 言い切りは しない
+    expect(root.textContent).not.toMatch(/クッキー|追跡/);
+    expect(findBanned(root.textContent)).toEqual([]);
+  }
+
+  test('追加画面：YouTube の入力欄の下に ytRights と ytNotice が出て、禁止の言葉がない', async () => {
     const root = await open(makeDeps());
     byLabel(root, '＋ 曲を 足す').click();
-    expect(root.querySelector(`input[aria-label="${ytLabel}"]`)).not.toBeNull();
-    expect(root.textContent).toContain('YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません');
-    expect(findBanned(root.textContent)).toEqual([]);
+    expectYtLines(root);
+  });
+
+  test('既存の曲に YouTube を足す画面にも ytRights と ytNotice が出る', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    byLabel(root, 'YouTube').click();
+    expectYtLines(root);
   });
 
   test('アドレスだけで追加：youtubeId つき・ファイル保存なし・songYt へ', async () => {

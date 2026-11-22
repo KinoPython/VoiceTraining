@@ -124,6 +124,8 @@ export function renderStage6List(root, params, deps = defaultDeps) {
       ...picker(picked, 'vocal', T.pickVocal),
       button(T.guide, () => go('vocalGuide')),
       yt.input,
+      // 上の rights は 買った 曲の 話。YouTube は 取り出さず 流すだけ、と 欄の すぐ下で 分けて 伝える
+      note(T.ytRights),
       note(T.ytNotice),
       message,
       button(T.submit, () => {
@@ -170,6 +172,7 @@ export function renderStage6List(root, params, deps = defaultDeps) {
     root.replaceChildren(
       heading(`${song.title}：${T.ytButton}`),
       yt.input,
+      note(T.ytRights),
       note(T.ytNotice),
       message,
       button(T.ytSave, () => {

@@ -270,7 +270,7 @@ describe('ytErrorKey と案内文', () => {
   });
 
   test('案内文に禁止語がない', () => {
-    const keys = ['ytNotEmbeddable', 'ytNotFound', 'ytBadId', 'ytNoReferer', 'ytOther', 'ytOffline', 'ytEarphone', 'ytNotice'];
+    const keys = ['ytNotEmbeddable', 'ytNotFound', 'ytBadId', 'ytNoReferer', 'ytOther', 'ytOffline', 'ytNotice', 'ytRights'];
     for (const k of keys) {
       expect(typeof STAGE6_TEXT[k]).toBe('string');
       expect(findBanned(STAGE6_TEXT[k])).toEqual([]);

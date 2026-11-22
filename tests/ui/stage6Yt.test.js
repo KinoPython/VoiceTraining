@@ -22,7 +22,7 @@ import { renderStage6Yt } from '../../src/screens/stage6Yt.js';
 import { findBanned } from '../../src/logic/words.js';
 import { addSong, getSong, loadState, saveRange } from '../../src/storage/store.js';
 import { CONFIG } from '../../src/logic/config.js';
-import { STAGE6_TEXT } from '../../src/data/copy.js';
+import { STAGE6_TEXT, SAFETY_LINES } from '../../src/data/copy.js';
 
 // 実際の YouTube にはつながない。偽のプレーヤーと偽のタイマーを deps で渡す
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -135,13 +135,18 @@ describe('段6② YouTube で聞く画面', () => {
     localStorage.clear();
   });
 
-  test('曲名・YouTube の印・イヤホンの注意・プレーヤーの枠・位置と長さが出る', async () => {
+  test('曲名・YouTube に つながる お知らせ・イヤホンと音量の注意・プレーヤーの枠・位置と長さが出る', async () => {
     addSong(song());
     const deps = makeDeps();
     const root = await open(deps);
     expect(root.textContent).toContain('曲Y');
-    expect(root.textContent).toContain('YouTube');
-    expect(root.textContent).toContain('曲に 合わせて 歌う ときは、イヤホンが 必要です');
+    // 実際に YouTube に つながる この画面にも、何が 送られるかの お知らせを 出す（プレーヤーの 枠より 前）
+    const notice = [...root.querySelectorAll('p')].find((p) => p.textContent === STAGE6_TEXT.ytNotice);
+    expect(notice).toBeTruthy();
+    expect(notice.compareDocumentPosition(root.querySelector('.yt-frame')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(root.textContent).toContain('見た 動画などの 情報が YouTube（Google）の 決まりで 送られます');
+    expect(root.textContent).toContain(STAGE6_TEXT.earphone); // 音量の 注意も ふくむ、段6①と 同じ 文
+    expect(root.textContent).toContain('音量は 小さめに して');
     expect(deps.createYtPlayer).toHaveBeenCalledTimes(1);
     const [container] = deps.createYtPlayer.mock.calls[0];
     expect(container.tagName).toBe('DIV');
@@ -196,6 +201,13 @@ describe('段6② YouTube で聞く画面', () => {
     expect(root.textContent).toContain('この 動画は 見つかりません。アドレスを 確かめて ください');
   });
 
+  test('YtPlayerError(153)（参照元が無い）→ アプリを Safari などで 開きなおす 案内', async () => {
+    addSong(song());
+    const deps = makeDeps({ createYtPlayer: vi.fn(async () => { throw named('YtPlayerError', { code: 153 }); }) });
+    const root = await open(deps);
+    expect(root.textContent).toContain('この 画面からは YouTube を 開けませんでした。この アプリを Safari などの ブラウザで 開きなおして みて ください');
+  });
+
   test('準備のあとに来たエラー（再生しようとして 150）でも案内を出し、プレーヤーを片づける', async () => {
     addSong(song());
     const root = await open(makeDeps());
@@ -231,7 +243,7 @@ describe('段6② YouTube で聞く画面', () => {
     await mark(root, 12, 10);
     await click(root, '区間を 保存');
     expect(getSong('s1').ytSections).toEqual([]);
-    expect(root.textContent).toContain('終わりは 始まりより 0.5秒 より 後ろに して ください');
+    expect(root.textContent).toContain('終わりは、始まりから 0.5秒 より あとに して ください');
     expect(findBanned(root.textContent)).toEqual([]);
   });
 
@@ -537,6 +549,9 @@ describe('段6② YouTube で聞く画面', () => {
       const root = await open(makeDeps());
       await click(root, '● 歌う');
       expect(root.textContent).toContain('イヤホンを つけましたか？');
+      // 歌う 直前に、苦しい・痛い ときは やめる／声がれが 続くときは 耳鼻咽喉科、の 一言を 出す
+      expect(root.textContent).toContain(SAFETY_LINES[0]);
+      expect(root.textContent).toContain(SAFETY_LINES[1]);
       expect(openMic).not.toHaveBeenCalled();
       expect(root.querySelector('.yt-frame')).toBeTruthy(); // プレーヤーの枠は残す（描きなおすと動画が読みなおしになる）
       await click(root, 'つけた');
@@ -571,26 +586,41 @@ describe('段6② YouTube で聞く画面', () => {
       expect(player.seekTo).toHaveBeenLastCalledWith(0);
     });
 
-    test('同じ高さを流す → 「まっすぐ」と、点数ではないという注意', async () => {
+    test('同じ高さを流す → 「少なめ」と、点数ではない・よい わるいでは ないという注意。安全の一言も出る', async () => {
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
       await singTake(root, { fn: () => 55 });
-      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
-      expect(root.textContent).toContain('声の 高さの ゆれ方の 目安で、うまい・へたの 点数ではありません');
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
+      expect(root.textContent).toContain('声の 高さの ゆれ方の 目安です。うまい・へたの 点数では ありません');
+      expect(root.textContent).toContain('ビブラートや 音の 変わり目も ふくまれます。どれが よい・わるいと いう ものでは ありません');
+      // 結果の 画面にも、のどを 使いすぎない 一言と 安全の 一言を 出す（ボタンより 前）
+      expect(root.textContent).toContain(STAGE6_TEXT.highCare);
+      expect(root.textContent).toContain(SAFETY_LINES[0]);
+      expect(root.textContent).toContain(SAFETY_LINES[1]);
+      const again = byLabel(root, 'もう一度 歌う');
+      const care = [...root.querySelectorAll('p')].find((p) => p.textContent === STAGE6_TEXT.highCare);
+      expect(care.compareDocumentPosition(again) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(findBanned(root.textContent)).toEqual([]);
     });
 
-    test('±60 セントでゆれる → 「よく ゆれる」、±40 セント → 「ときどき ゆれる」', async () => {
+    test('3つの音を 声を とぎらせずに 歌う（レガート）→ メロディの 上下は ゆれに 入れず「少なめ」', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: (i) => (i < 35 ? 55 : i < 70 ? 57 : 59) });
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
+    });
+
+    test('±60 セントでゆれる → 「多め」、±40 セント → 「ふつう」', async () => {
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
       await singTake(root, { fn: (i) => 55 + (i % 2 ? 0.6 : -0.6) });
-      expect(root.textContent).toContain('ゆれの 目安：よく ゆれる');
+      expect(root.textContent).toContain('ゆれの 目安：多め');
       await click(root, 'もう一度 歌う');
       await click(root, 'つけた');
       expect(openMic).toHaveBeenCalledTimes(2); // 歌い終わるたびに閉じるので、開きなおす
       await click(root, '■ 止める');
       await singTake(root, { fn: (i) => 55 + (i % 2 ? 0.4 : -0.4) });
-      expect(root.textContent).toContain('ゆれの 目安：ときどき ゆれる');
+      expect(root.textContent).toContain('ゆれの 目安：ふつう');
     });
 
     test('無音（null ばかり）→ 「声が 聞こえませんでした」。ゆれは出ず、履歴にも前回の線にも入らない', async () => {
@@ -606,24 +636,45 @@ describe('段6② YouTube で聞く画面', () => {
       expect(loadState().history).toEqual([]);
     });
 
-    test('声の地図 50〜60：65 を3コマ・45 を2コマ → 「上に 3回・下に 2回」と「無理に のばさない」。地図の線も引く', async () => {
+    test('声の地図 50〜60：65 を 300ms（15コマ）→ 数は出さず「高い 所が ありました」と「無理に のばさない」。下は 2コマだけなので出さない', async () => {
       saveRange({ comfort: 55, low: 50, high: 60 });
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
       // はじめの数コマはマイクの遅れのぶん前奏あつかいで捨てるので、20コマ目から外の音を出す
-      const fn = (i) => ([20, 21, 22].includes(i) ? 65 : [40, 41].includes(i) ? 45 : 55);
+      const fn = (i) => (i >= 20 && i < 35 ? 65 : [60, 61].includes(i) ? 45 : 55);
       await singTake(root, { fn });
       expect(graphLog.rangeLines).toContainEqual([50, 60]);
-      expect(root.textContent).toContain('声の 地図の 外：上に 3回・下に 2回');
+      expect(root.textContent).toContain('声の 地図より 高い 所が ありました（目安）');
       expect(root.textContent).toContain('高い 所は 無理に のばさないで ください');
+      expect(root.textContent).not.toContain('低い 所');
+      expect(root.textContent).not.toMatch(/\d+回/); // 読みの 数は 出さない
       expect(findBanned(root.textContent)).toEqual([]);
+    });
+
+    test('下に だけ 長く出た → 「低い 所が ありました」だけ。「無理に のばさない」は出さない', async () => {
+      saveRange({ comfort: 55, low: 50, high: 60 });
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: (i) => (i >= 20 && i < 40 ? 45 : 55) });
+      expect(root.textContent).toContain('声の 地図より 低い 所が ありました（目安）');
+      expect(root.textContent).not.toContain('高い 所が ありました');
+      expect(root.textContent).not.toContain('無理に のばさないで');
+    });
+
+    test('地図の外が ほんの少し（上に 3コマ）だけなら、地図の外の行は出ない', async () => {
+      saveRange({ comfort: 55, low: 50, high: 60 });
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: (i) => ([20, 21, 22].includes(i) ? 65 : 55) });
+      expect(root.textContent).not.toContain('声の 地図より');
+      expect(root.textContent).not.toContain('無理に のばさないで');
     });
 
     test('声の地図が無いときは、地図の外の行も線も出ない', async () => {
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
       await singTake(root, { fn: (i) => (i > 20 && i < 25 ? 80 : 55) });
-      expect(root.textContent).not.toContain('声の 地図の 外');
+      expect(root.textContent).not.toContain('声の 地図より');
       expect(graphLog.rangeLines.at(-1)).toEqual([null, null]);
     });
 
@@ -632,7 +683,7 @@ describe('段6② YouTube で聞く画面', () => {
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
       await singTake(root, { fn: () => 55 });
-      expect(root.textContent).not.toContain('声の 地図の 外');
+      expect(root.textContent).not.toContain('声の 地図より');
       expect(root.textContent).not.toContain('無理に のばさないで');
     });
 
@@ -671,7 +722,7 @@ describe('段6② YouTube で聞く画面', () => {
       const root = await open(makeDeps());
       await mark(root, 10, 12);
       await singTake(root, { fn: () => 55 });
-      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
       expect(getSong('s1').ytSections).toEqual([]);
     });
 
@@ -735,7 +786,7 @@ describe('段6② YouTube で聞く画面', () => {
       for (let ms = 0; ms <= 1500; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
       playerOpts.onState('ended');
       await settle();
-      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
       expect(timers.active.size).toBe(0);
       go('home');
       await settle();
@@ -797,7 +848,7 @@ describe('段6② YouTube で聞く画面', () => {
       player.sec = 12.01;
       timers.tick();
       await settle();
-      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
       expect(mic.close).toHaveBeenCalledTimes(2);
     });
 
@@ -851,7 +902,9 @@ describe('段6② YouTube で聞く画面', () => {
       for (let ms = 0; ms <= 1000; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
       playerOpts.onState('paused');
       await settle();
-      expect(root.textContent).toContain('一時停止したので、今回は 記録しません');
+      // 自分の せいと 読まれない 言い方で、次に 何を 押すかも 出す
+      expect(root.textContent).toContain('途中で 止まったので、今回は 記録しません。もう一度 歌う ときは 「● 歌う」を 押して ください');
+      expect(root.textContent).not.toContain('一時停止したので');
       expect(byLabel(root, '● 歌う')).toBeTruthy();
       expect(mic.close).toHaveBeenCalledTimes(1);
       expect(timers.active.size).toBe(0);
@@ -891,7 +944,7 @@ describe('段6② YouTube で聞く画面', () => {
       player.sec = 12.15;
       timers.tick();
       await settle();
-      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
       const line = getSong('s1').ytSections[0].lastLine;
       expect(line[0].t).toBeGreaterThanOrEqual(0);
       expect(line[0].t).toBeLessThanOrEqual(20);
@@ -912,7 +965,7 @@ describe('段6② YouTube で聞く画面', () => {
       player.sec = 8.05;
       timers.tick();
       await settle();
-      expect(root.textContent).toContain('一時停止したので、今回は 記録しません');
+      expect(root.textContent).toContain('途中で 止まったので、今回は 記録しません');
       expect(mic.close).toHaveBeenCalledTimes(1);
       expect(timers.active.size).toBe(0);
     });
@@ -943,7 +996,7 @@ describe('段6② YouTube で聞く画面', () => {
       nowMs = wait;
       timers.tick();
       await settle();
-      expect(root.textContent).toContain('再生が 始まりませんでした。もう一度 ためして ください');
+      expect(root.textContent).toContain('再生が 始まりませんでした。動画の ▶ を 一度 押してから、もう一度 「● 歌う」を 押して みて ください');
       expect(mic.close).toHaveBeenCalledTimes(1);
       expect(timers.active.size).toBe(0);
       expect(player.pause).toHaveBeenCalled();
@@ -964,7 +1017,7 @@ describe('段6② YouTube で聞く画面', () => {
       playerOpts.onState('buffering');
       for (nowMs = 50; nowMs <= 50 + CONFIG.stage6.yt.seekWaitMs; nowMs += 50) timers.tick();
       await settle();
-      expect(root.textContent).toContain('再生が 止まったので、今回は 記録しません');
+      expect(root.textContent).toContain('再生が 止まったので、今回は 記録しません。電波が 弱い ことが あります。少し 待ってから、もう一度 「● 歌う」を 押して ください');
       expect(mic.close).toHaveBeenCalledTimes(1);
       expect(timers.active.size).toBe(0);
     });
@@ -981,16 +1034,17 @@ describe('段6② YouTube で聞く画面', () => {
         mic.emit(55);
       }
       await settle();
-      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(root.textContent).toContain('ゆれの 目安：少なめ');
       go('home');
       await settle();
       expect(loadState().history).toHaveLength(1);
     });
 
     test('新しい文に禁止の言葉が無い', () => {
-      const texts = [STAGE6_TEXT.ytSteady, STAGE6_TEXT.ytSome, STAGE6_TEXT.ytWobbly, STAGE6_TEXT.ytWobbleNote,
-        STAGE6_TEXT.ytNoVoice, STAGE6_TEXT.ytOutside(3, 2), STAGE6_TEXT.ytToSong, STAGE6_TEXT.ytPausedTake,
-        STAGE6_TEXT.ytNotStarted, STAGE6_TEXT.ytStalledTake];
+      const texts = [STAGE6_TEXT.ytFew, STAGE6_TEXT.ytNormal, STAGE6_TEXT.ytMany, STAGE6_TEXT.ytWobbleNote,
+        STAGE6_TEXT.ytWobbleKinds, STAGE6_TEXT.ytNoVoice, STAGE6_TEXT.ytOutsideAbove, STAGE6_TEXT.ytOutsideBelow,
+        STAGE6_TEXT.ytToSong, STAGE6_TEXT.ytPausedTake, STAGE6_TEXT.ytNotStarted, STAGE6_TEXT.ytStalledTake,
+        STAGE6_TEXT.ytNotice, STAGE6_TEXT.ytRights, STAGE6_TEXT.ytNoReferer, STAGE6_TEXT.ytBadRange];
       for (const t of texts) {
         expect(typeof t).toBe('string');
         expect(findBanned(t)).toEqual([]);
