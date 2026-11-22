@@ -12,15 +12,39 @@ function initialState() {
     levels: { s1: 0, s3: 0, s4: 0, s5: 0 },
     history: [],
     welcomed: false,
+    songs: [],
   };
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
-// 1回分の記録として使える形か（段の番号が 1〜5 の整数）。
+// 1回分の記録として使える形か（段の番号が 1〜6 の整数）。
 // こわれた記録がまじると、ホームやきろくの画面が開けなくなるため
-const isHistoryEntry = (e) => isObject(e) && Number.isInteger(e.stage) && e.stage >= 1 && e.stage <= 5;
+const isHistoryEntry = (e) => isObject(e) && Number.isInteger(e.stage) && e.stage >= 1 && e.stage <= 6;
+
+// 曲の区間として使える形か。こわれた区間がまじると、練習の画面が開けなくなるため
+const isLastLine = (l) => l === null || (Array.isArray(l) && l.every((p) => isObject(p) && isNum(p.t) && (p.midi === null || isNum(p.midi))));
+const isSection = (x) => isObject(x) && typeof x.id === 'string' && typeof x.name === 'string'
+  && isNum(x.startSec) && isNum(x.endSec) && isLastLine(x.lastLine)
+  && (x.lastRatio === null || isNum(x.lastRatio));
+
+// 曲として使える形か。ファイルやお手本の線はここには入れない（別の置き場。バックアップにも入れない）
+const isSong = (x) => isObject(x) && typeof x.id === 'string' && typeof x.title === 'string'
+  && typeof x.hasFile === 'boolean' && typeof x.hasVocal === 'boolean'
+  && isNum(x.durationSec) && isNum(x.keyAdvice) && Array.isArray(x.sections);
+
+// 決まった項目だけ残す（よぶんな項目がバックアップに紛れこまないように）
+function cleanSong(x) {
+  return {
+    id: x.id, title: x.title, hasFile: x.hasFile, hasVocal: x.hasVocal,
+    durationSec: x.durationSec, keyAdvice: x.keyAdvice,
+    sections: x.sections.filter(isSection).slice(0, CONFIG.stage6.maxSections).map((c) => ({
+      id: c.id, name: c.name, startSec: c.startSec, endSec: c.endSec,
+      lastLine: c.lastLine, lastRatio: c.lastRatio,
+    })),
+  };
+}
 
 // レベルを 0〜最大に収める。数でなければ 0（はしごの計算がおかしくならないように）
 const clampLevel = (v) => (isNum(v) ? Math.min(Math.max(v, 0), CONFIG.ladder.maxLevel) : 0);
@@ -44,6 +68,7 @@ function fillMissing(stored) {
     levels: cleanLevels(stored.levels),
     history: Array.isArray(stored.history) ? stored.history.filter(isHistoryEntry) : [],
     welcomed: stored.welcomed === true,
+    songs: Array.isArray(stored.songs) ? stored.songs.filter(isSong).map(cleanSong) : [],
   };
 }
 
@@ -75,6 +100,44 @@ export const saveRange = (range) => update((s) => { s.range = range; });
 export const setLevel = (stage, level) => update((s) => { s.levels[stage] = level; });
 export const addHistory = (entry) => update((s) => { s.history.push(entry); });
 export const setWelcomed = () => update((s) => { s.welcomed = true; });
+
+
+// 曲・区間の id。randomUUID が使えない古い環境では、時刻＋乱数で代わりにする
+export const newId = () => (globalThis.crypto?.randomUUID
+  ? crypto.randomUUID()
+  : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+
+// 曲の記録。ファイルそのものは songFiles.js（IndexedDB）に置く
+export const addSong = (song) => update((s) => { s.songs.push(song); });
+export const updateSong = (id, patch) => update((s) => {
+  const i = s.songs.findIndex((x) => x.id === id);
+  if (i >= 0) s.songs[i] = { ...s.songs[i], ...patch, id }; // id は書きかえさせない
+});
+export const removeSong = (id) => update((s) => { s.songs = s.songs.filter((x) => x.id !== id); });
+export const getSong = (id) => loadState().songs.find((x) => x.id === id) ?? null;
+
+// 区間を足す（同じ id なら上書き）。1曲に maxSections まで。曲が無いときも 'max' ではなく例外にしない
+export function saveSection(songId, section) {
+  let result = { ok: false, reason: 'max' };
+  update((s) => {
+    const song = s.songs.find((x) => x.id === songId);
+    if (!song) return;
+    const i = song.sections.findIndex((c) => c.id === section.id);
+    if (i >= 0) {
+      song.sections[i] = section;
+    } else if (song.sections.length < CONFIG.stage6.maxSections) {
+      song.sections.push(section);
+    } else {
+      return;
+    }
+    result = { ok: true };
+  });
+  return result;
+}
+export const removeSection = (songId, sectionId) => update((s) => {
+  const song = s.songs.find((x) => x.id === songId);
+  if (song) song.sections = song.sections.filter((c) => c.id !== sectionId);
+});
 
 export const exportBackup = () => JSON.stringify(loadState());
 
