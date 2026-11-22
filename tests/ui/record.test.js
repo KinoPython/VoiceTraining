@@ -92,6 +92,34 @@ describe('きろく', () => {
     expect(t).toContain('合いぐあい 平均 80%（目安）');
   });
 
+  test('YouTube の練習は「（YouTube）　○回 練習」だけ。成功数・合いぐあい・NaN は出さない', () => {
+    seed({ history: [
+      { date: '2026-11-20', stage: 6, tries: 1, successes: 0, value: null, songTitle: '青い空', kind: 'yt' },
+      { date: '2026-11-20', stage: 6, tries: 1, successes: 0, value: null, songTitle: '青い空', kind: 'yt' },
+    ] });
+    const t = open().textContent;
+    expect(t).toContain('好きな 曲：青い空（YouTube）　2回 練習');
+    expect(t).not.toContain('NaN');
+    expect(t).not.toContain('できた');
+    expect(t).not.toContain('合いぐあい');
+    expect(findBanned(t)).toEqual([]);
+  });
+
+  test('同じ日・同じ曲名でも、曲ファイルの行と YouTube の行は別になる', () => {
+    seed({ history: [
+      { date: '2026-11-20', stage: 6, tries: 2, successes: 1, value: 0.5, songTitle: '青い空' },
+      { date: '2026-11-20', stage: 6, tries: 3, successes: 0, value: null, songTitle: '青い空', kind: 'yt' },
+    ] });
+    const t = open().textContent;
+    expect(t).toContain('好きな 曲：青い空　2回 中 1回 できた・合いぐあい 平均 50%（目安）');
+    expect(t).toContain('好きな 曲：青い空（YouTube）　3回 練習');
+  });
+
+  test('YouTube で曲名が無い記録は「（曲名なし）（YouTube）」で出る', () => {
+    seed({ history: [{ date: '2026-11-20', stage: 6, tries: 1, successes: 0, value: null, kind: 'yt' }] });
+    expect(open().textContent).toContain('好きな 曲：（曲名なし）（YouTube）　1回 練習');
+  });
+
   test('声の地図があれば鍵盤を出す', () => {
     seed({ range });
     expect(open().querySelector('svg.keyboard')).not.toBeNull();

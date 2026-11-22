@@ -195,3 +195,52 @@ export const VOCAL_GUIDE_TEXT = {
 | 【推奨】`stage6Song.js`（`TEXT.keyAdvice`）：「キーを ○つ 下げる」は、カラオケの キー（半音 1つ ずつ）の 意味だと 分かりにくい。また 歌手が 異性で 1オクターブ ちがう ときは、キーを 下げず 1オクターブ 下で 歌って よい（採点は 1オクターブ ちがいを 合って いる 扱い・`songScore.js`）。→ `\`この 曲は、カラオケの キーを ${n}つ（半音 ${n}つ）下げると 楽に なりそう です（目安）。\``。`lineNote` か 段6 の 画面に「お手本より 1オクターブ 下・上で 歌っても 大丈夫です」を 1行 足す。 | `keyAdvice` を「カラオケの キーを ○つ（半音 ○つ）下げると…」にし、`octaveNote`（1オクターブ 下・上でも 大丈夫）を曲の画面に足した。 |
 | 【推奨】`copy.js`（段6 の `desc`）：「お手本の 線」に「目安」が ない（ほかの 段6 の 文は すべて 目安つき）。→ `desc: '買った 曲で、お手本の 線（目安）と 重ねて 練習します'` | 段6の `desc` を「お手本の 線（目安）」にした。 |
 | 【推奨】`vocalGuide.js`（`VOCAL_GUIDE_TEXT.back`）：案内は 曲を 足す 画面から 開くが、もどる 先は 曲の 一覧（`go('stage6')`）で、ボタンの「曲の 画面へ」と ずれる（`steps[5]` の「曲の 画面」も 同じ）。→ ボタンを「曲の 一覧へ もどる」に し、`steps[5]` を「こえトレの『＋ 曲を 足す』で『歌声だけの ファイルを 選ぶ』を 押して、その ファイルを 選びます。」にする。 | 案内のボタンを「曲の 一覧へ もどる」にし、steps の最後を「＋ 曲を 足す」の言い方に直した。 |
+
+## 段6②（YouTube）の 文
+
+専門の目線のチェックは、このあと controller が行う（まだ 未実施）。YouTube の 画面（`src/screens/stage6Yt.js`）には、この 画面だけの 文は なく、下の `STAGE6_TEXT` の `yt*` と、段6①の 曲の 画面（`src/screens/stage6Song.js`）の `TEXT` を 同じ 文で 使い回して いる（区間の 保存・消す・上書き、イヤホンの 確認、速さ、歌う・止める、など。文は 上の「画面の文（`stage6Song.js` の `TEXT`）」に ある）。
+
+### 画面の文（`src/data/copy.js` の `STAGE6_TEXT` の `yt*`）
+
+```js
+  ytNotEmbeddable: 'この 動画は 持ち主の 設定で、アプリの 中では 流せません',
+  ytNotFound: 'この 動画は 見つかりません。アドレスを 確かめて ください',
+  ytBadId: 'アドレスを 読み取れません',
+  ytNoReferer: 'この 画面から YouTube を 開けませんでした。ブラウザで 開きなおして みて ください',
+  ytOther: 'YouTube を 再生できませんでした',
+  ytOffline: '電波が ない ときは YouTube は 使えません。買った 曲の ファイルは 電波なしで 使えます',
+  ytEarphone: '曲に 合わせて 歌う ときは、イヤホンが 必要です',
+  ytButton: 'YouTube',
+  ytLabel: 'YouTube の アドレス（あとからでも 足せます）',
+  ytSave: '保存',
+  ytNotice: 'YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません',
+  ytPractice: 'YouTube で 練習',
+  ytLoading: 'YouTube を 読み込んで います…',
+  ytPlay: '▶ 再生',
+  ytSetStart: 'ここを 始まりに',
+  ytSetEnd: 'ここを 終わりに',
+  ytLoop: '▶ 区間を くり返す',
+  ytRange: (from, to) => `区間：${from} 〜 ${to}`,
+  ytPickFirst: '先に 「ここを 始まりに」「ここを 終わりに」で 区間を 選んで ください',
+  ytBadRange: '終わりは 始まりより 0.5秒 より 後ろに して ください',
+  ytSteady: 'ゆれの 目安：まっすぐ',
+  ytSome: 'ゆれの 目安：ときどき ゆれる',
+  ytWobbly: 'ゆれの 目安：よく ゆれる',
+  ytWobbleNote: '声の 高さの ゆれ方の 目安で、うまい・へたの 点数ではありません',
+  ytNoVoice: '声が 聞こえませんでした。もう一度 ためして みましょう',
+  ytOutside: (above, below) => `声の 地図の 外：上に ${above}回・下に ${below}回`,
+  ytToSong: 'お手本の 線で 練習する',
+  ytPausedTake: '一時停止したので、今回は 記録しません',
+  ytNotStarted: '再生が 始まりませんでした。もう一度 ためして ください',
+  ytStalledTake: '再生が 止まったので、今回は 記録しません',
+```
+
+### 画面の文（`src/screens/stage6Yt.js` の 中の 表示）
+
+- 位置の 表示：「1:23 / 3:45」（分:秒）。区間の 端：「区間：0:10.5 〜 0:15.0」（`ytRange`）。端が 未決定の ときは「－」
+- 歌ったあとの「ゆれの 目安」は `ytSteady`・`ytSome`・`ytWobbly`・`ytWobbleNote`、声が 無い ときは `ytNoVoice`、地図の 外は `ytOutside`。点数・合格・失敗の 言葉は 使って いない
+
+### 指摘と直したこと（段6②）
+
+| 指摘 | 直したこと |
+|---|---|

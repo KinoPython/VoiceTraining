@@ -98,11 +98,17 @@ function stageLine(stage, list) {
   return `${name}　${countText(list)}`;
 }
 
-// 段6は曲ごとに1行：回数は足し、合いぐあいは「回数で重みをつけた平均」にする
+// 段6は曲ごとに1行：回数は足し、合いぐあいは「回数で重みをつけた平均」にする。
+// YouTube の練習（kind: 'yt'）は別の行：回数だけ出す（成功数・合いぐあいは無いため）
 function stage6Lines(list) {
-  const bySong = new Map();
-  for (const h of list) bySong.set(h.songTitle ?? '（曲名なし）', [...(bySong.get(h.songTitle ?? '（曲名なし）') ?? []), h]);
-  return [...bySong.entries()].map(([title, items]) => {
+  const groups = new Map(); // 「曲名＋種類」→ 記録の並び
+  for (const h of list) {
+    const key = `${h.kind === 'yt' ? 'yt' : 'file'}\n${h.songTitle ?? '（曲名なし）'}`;
+    groups.set(key, [...(groups.get(key) ?? []), h]);
+  }
+  return [...groups.values()].map((items) => {
+    const title = items[0].songTitle ?? '（曲名なし）';
+    if (items[0].kind === 'yt') return `好きな 曲：${title}（YouTube）　${sum(items, 'tries')}回 練習`;
     // 平均は、合いぐあいの数がある記録だけで出す。1つも無ければ平均は出さない
     const valued = withValue(items);
     const tries = sum(valued, 'tries');
