@@ -502,15 +502,24 @@ describe('段6② YouTube で聞く画面', () => {
       graphLog.rangeLines.length = 0;
     });
 
+    // seekTo の先（前奏の始まり）に位置が届いてから、atNow に区間の始まりへ来る（速さ rate で流れる）
+    function reachStart(from, atNow, rate = 1) {
+      const seek = Math.max(0, from - CONFIG.stage6.leadInSec);
+      nowMs = atNow - ((from - seek) * 1000) / rate;
+      player.sec = seek;
+      timers.tick();
+      nowMs = atNow;
+      player.sec = from;
+      timers.tick();
+    }
+
     // 「歌う」→「つけた」→ 前奏のあと、区間の始まりから終わりまで stepMs ごとに fn(i) の高さを流す。
     // 偽の時計：区間の始まりの位置を now=1000 で読ませ、そこから曲の位置 ms ぶん（速さで割った本当の時間）進める
     async function singTake(root, { from = 10, to = 12, rate = 1, stepMs = 20, fn = () => 55 } = {}) {
       await click(root, '● 歌う');
       await click(root, 'つけた');
       playerOpts.onState('playing');
-      nowMs = 1000;
-      player.sec = from;
-      timers.tick();
+      reachStart(from, 1000, rate);
       let i = 0;
       for (let ms = 0; ms <= (to - from) * 1000; ms += stepMs) {
         nowMs = 1000 + ms / rate;
@@ -537,9 +546,7 @@ describe('段6② YouTube で聞く画面', () => {
       expect([...timers.active.values()][0].ms).toBe(CONFIG.stage6.yt.pollMs);
       expect(mic.close).not.toHaveBeenCalled();
       playerOpts.onState('playing');
-      nowMs = 1000;
-      player.sec = 10;
-      timers.tick();
+      reachStart(10, 1000);
       for (let ms = 0; ms <= 2000; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
       nowMs = 3010;
       player.sec = 12.01;
@@ -724,9 +731,7 @@ describe('段6② YouTube で聞く画面', () => {
       await click(root, '● 歌う');
       await click(root, 'つけた');
       playerOpts.onState('playing');
-      nowMs = 1000;
-      player.sec = 10;
-      timers.tick();
+      reachStart(10, 1000);
       for (let ms = 0; ms <= 1500; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
       playerOpts.onState('ended');
       await settle();
@@ -786,9 +791,7 @@ describe('段6② YouTube で聞く画面', () => {
       expect(root.textContent).not.toContain('声が 聞こえませんでした');
       expect(mic.close).toHaveBeenCalledTimes(1);
       // 位置が始まりに届いた → ふつうに進む
-      nowMs = 6000;
-      player.sec = 10;
-      timers.tick();
+      reachStart(10, 6000);
       for (let ms = 0; ms <= 2000; ms += 20) { nowMs = 6000 + ms; mic.emit(55); }
       nowMs = 8010;
       player.sec = 12.01;
@@ -844,9 +847,7 @@ describe('段6② YouTube で聞く画面', () => {
       await click(root, '● 歌う');
       await click(root, 'つけた');
       playerOpts.onState('playing');
-      nowMs = 1000;
-      player.sec = 10;
-      timers.tick();
+      reachStart(10, 1000);
       for (let ms = 0; ms <= 1000; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
       playerOpts.onState('paused');
       await settle();
@@ -859,6 +860,75 @@ describe('段6② YouTube で聞く画面', () => {
       go('home');
       await settle();
       expect(loadState().history).toEqual([]);
+    });
+
+    test('seekTo のあとも位置が区間の中ほど（古い位置）のままなら、playing が来ても読みを残さない。前奏の始まりに届いてから進む', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      player.seekTo.mockImplementation(() => {}); // 位置は動かない（古いまま）
+      player.sec = 11;
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      for (let i = 0; i < 5; i++) {
+        nowMs = i * 50;
+        timers.tick();
+        mic.emit(55);
+      }
+      await settle();
+      expect(root.textContent).toContain('曲に 合わせて 歌って ください'); // まだ待っている
+      expect(root.textContent).not.toContain('ゆれの 目安');
+      // 位置が前奏の始まり（8 秒）の近くに届いた → ここから時計を合わせる
+      nowMs = 1000;
+      player.sec = 8.05;
+      timers.tick();
+      for (let ms = 0; ms <= 4000; ms += 20) {
+        nowMs = 1000 + ms;
+        if (ms % 200 === 0) { player.sec = 8.05 + ms / 1000; timers.tick(); }
+        mic.emit(55);
+      }
+      nowMs = 5100;
+      player.sec = 12.15;
+      timers.tick();
+      await settle();
+      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      const line = getSong('s1').ytSections[0].lastLine;
+      expect(line[0].t).toBeGreaterThanOrEqual(0);
+      expect(line[0].t).toBeLessThanOrEqual(20);
+      for (let i = 1; i < line.length; i++) expect(line[i].t).toBeGreaterThan(line[i - 1].t); // 時刻は順に並ぶ
+      expect(line.at(-1).t).toBeLessThanOrEqual(2000);
+    });
+
+    test('位置が届く前に一時停止された（playing のあとの paused）なら、届いたところで今回は数えない', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      player.seekTo.mockImplementation(() => {});
+      player.sec = 11;
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      playerOpts.onState('paused');
+      timers.tick();
+      player.sec = 8.05;
+      timers.tick();
+      await settle();
+      expect(root.textContent).toContain('一時停止したので、今回は 記録しません');
+      expect(mic.close).toHaveBeenCalledTimes(1);
+      expect(timers.active.size).toBe(0);
+    });
+
+    test('歌い始める前の止める操作の paused（playing より前）は、一時停止あつかいにしない', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('paused'); // 「歌う」の前に止めた分の知らせが、遅れて届いた
+      nowMs = 0;
+      timers.tick(); // 位置は 8 秒（seekTo の先）に届いている
+      playerOpts.onState('paused');
+      await settle();
+      expect(root.textContent).toContain('曲に 合わせて 歌って ください');
+      expect(mic.close).not.toHaveBeenCalled();
     });
 
     test('新しい文に禁止の言葉が無い', () => {

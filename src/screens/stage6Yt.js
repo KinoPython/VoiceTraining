@@ -30,6 +30,9 @@ const WHICH = 'ytSections'; // YouTube の区間は、曲ファイルの区間�
 
 const noop = () => {};
 const DEFAULT_WINDOW_MS = 6000; // 線グラフのふつうの窓（pitchGraph.js と同じ）
+// seekTo の先に「届いた」とみなす位置の幅（秒）。前は読みの細かいずれ、後ろは流れはじめて進んだ分
+const LAND_BEFORE_SEC = 0.5;
+const LAND_AFTER_SEC = 1.0;
 const sectionMsOf = (section) => (section.endSec - section.startSec) * 1000;
 // ゆれの目安 → 結果の文（'none' は別の文にする。声が無いのに「まっすぐ」と言わないため）
 const WOBBLE_TEXT = { steady: T.ytSteady, some: T.ytSome, wobbly: T.ytWobbly };
@@ -415,10 +418,11 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     message = null;
     controls.replaceChildren(note(TEXT.singing), canvas, button(TEXT.stop, cancelTake));
     const seekSec = Math.max(0, section.startSec - CONFIG.stage6.leadInSec);
-    // landed：seekTo の先に位置が届いた印。playedAfterSeek：seekTo のあとに playing が来た印。waitedPolls：届くまで待った回数
+    // landed：seekTo の先に位置が届いた印。playedAfterSeek：seekTo のあとに playing が来た印。
+    // pausedBeforeLanding：届く前に一時停止された印。waitedPolls：届くまで待った回数
     take = {
       section, previous, readings: [], graph, canvas, clock: createSongClock(), mic,
-      seekSec, landed: false, playedAfterSeek: false, waitedPolls: 0,
+      seekSec, landed: false, playedAfterSeek: false, pausedBeforeLanding: false, waitedPolls: 0,
     };
     mic.onFrame((midi) => onSingFrame(midi));
     // 区間の少し前から1回だけ流す
@@ -441,12 +445,16 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   // YouTube は seekTo のすぐあと、しばらく古い位置を返すことがある。古い位置が区間の終わりより後ろだと
   // すぐ「終わり」になり、区間の中ほどだと時刻がずれる。位置が seekTo の先に届くまでは、時計も終わりも見ない。
   // いつまでも届かない（seekWaitMs）ときは、待つのをやめて、声の無い回として終える
+  // 届いた＝読んだ位置が seekTo の先のすぐ近く。区間の中ほどの古い位置を「届いた」としないよう、上の幅は狭くする
+  // （playing が来ただけでは届いたとしない）
   function checkLanded(readSec) {
-    const { seekSec, section } = take;
-    const near = readSec >= seekSec - 0.5 && readSec < section.endSec;
-    if (near || (take.playedAfterSeek && readSec < section.endSec)) {
+    const { seekSec } = take;
+    if (readSec >= seekSec - LAND_BEFORE_SEC && readSec <= seekSec + LAND_AFTER_SEC) {
       take.landed = true;
-      return true;
+      // 届く前に一時停止されていたら、届いたところで今回は数えない
+      if (!take.pausedBeforeLanding) return true;
+      interruptTake();
+      return false;
     }
     take.waitedPolls += 1;
     if (take.waitedPolls * CONFIG.stage6.yt.pollMs >= CONFIG.stage6.yt.seekWaitMs) endTake();
@@ -456,11 +464,20 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   // 歌っている間のプレーヤーの状態。位置が届く前の状態の変化（seekTo の途中）は見ない。
   // 区間の終わりが動画の終わりと同じだと、位置が少し手前のまま ended になるので、そこで終える。
   // 一時停止（YouTube の画面のボタンなど）したら、時刻がずれるので今回は数えない
+  // paused は、seekTo のあとに playing が来てからのものだけを一時停止とみなす
+  // （「歌う」の前に止めた分の paused の知らせが、遅れて届くことがあるため）
   function onSingState(name) {
-    if (name === 'playing') take.playedAfterSeek = true;
-    if (!take.landed) return;
+    if (name === 'playing') {
+      take.playedAfterSeek = true;
+      take.pausedBeforeLanding = false; // また流れはじめた
+    }
+    const userPaused = name === 'paused' && take.playedAfterSeek;
+    if (!take.landed) {
+      if (userPaused) take.pausedBeforeLanding = true;
+      return;
+    }
     if (name === 'ended') endTake();
-    else if (name === 'paused') interruptTake();
+    else if (userPaused) interruptTake();
   }
 
   function interruptTake() {
