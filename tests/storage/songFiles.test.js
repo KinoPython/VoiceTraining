@@ -41,4 +41,19 @@ describe('曲のファイルの置き場', () => {
     });
     expect(await putFile('e', 'line', { a: 1 })).toEqual({ ok: false, reason: 'other' });
   });
+
+  test('あとから（非同期で）容量エラーが来ても quota', async () => {
+    const orig = IDBObjectStore.prototype.put;
+    vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (...args) {
+      const req = orig.apply(this, args);
+      // 要求のエラーだけが入り、tx.error はまだ空、という順番を再現する
+      // 中止の前に onerror だけが来て、tx.error はまだ空、という順番を再現する
+      const tx = this.transaction;
+      req.addEventListener('success', () => {
+        tx.onerror({ target: { error: new DOMException('full', 'QuotaExceededError') } });
+      });
+      return req;
+    });
+    expect(await putFile('f', 'line', { a: 1 })).toEqual({ ok: false, reason: 'quota' });
+  });
 });

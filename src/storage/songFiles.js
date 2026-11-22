@@ -32,7 +32,8 @@ function run(mode, work) {
     const tx = db.transaction(STORE, mode);
     const out = work(tx.objectStore(STORE));
     tx.oncomplete = () => resolve(out && 'result' in out ? out.result : undefined);
-    tx.onerror = () => reject(tx.error);
+    // onerror は中止の前に来ることがあり、そのとき tx.error はまだ空。原因は個々の要求（e.target）から取る
+    tx.onerror = (e) => reject(e.target?.error ?? tx.error);
     tx.onabort = () => reject(tx.error ?? new DOMException('abort', 'AbortError'));
   }));
 }

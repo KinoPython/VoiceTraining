@@ -181,7 +181,7 @@ describe('段6：曲の記録', () => {
   });
 
   test('曲がないときの saveSection は例外にならない', () => {
-    expect(saveSection('nai', section('a'))).toEqual({ ok: false, reason: 'max' });
+    expect(saveSection('nai', section('a'))).toEqual({ ok: false, reason: 'nosong' });
   });
 
   test('history に stage 6 は残り、stage 7 は捨てられる', () => {

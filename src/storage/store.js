@@ -116,9 +116,9 @@ export const updateSong = (id, patch) => update((s) => {
 export const removeSong = (id) => update((s) => { s.songs = s.songs.filter((x) => x.id !== id); });
 export const getSong = (id) => loadState().songs.find((x) => x.id === id) ?? null;
 
-// 区間を足す（同じ id なら上書き）。1曲に maxSections まで。曲が無いときも 'max' ではなく例外にしない
+// 区間を足す（同じ id なら上書き）。1曲に maxSections まで。曲が無いときは 'nosong'（例外にはしない）
 export function saveSection(songId, section) {
-  let result = { ok: false, reason: 'max' };
+  let result = { ok: false, reason: 'nosong' };
   update((s) => {
     const song = s.songs.find((x) => x.id === songId);
     if (!song) return;
@@ -128,6 +128,7 @@ export function saveSection(songId, section) {
     } else if (song.sections.length < CONFIG.stage6.maxSections) {
       song.sections.push(section);
     } else {
+      result = { ok: false, reason: 'max' };
       return;
     }
     result = { ok: true };
