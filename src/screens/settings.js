@@ -1,7 +1,8 @@
 // せってい：声の地図の測りなおし・記録の書き出し/読み込み・案内・クレジット
 import { go } from '../router.js';
 import { button, heading, note } from '../ui/components.js';
-import { exportBackup, importBackup, requestPersist } from '../storage/store.js';
+import { exportBackup, importBackup, loadState, requestPersist } from '../storage/store.js';
+import { listSongIds, removeSongFiles } from '../storage/songFiles.js';
 import { todayString } from '../logic/today.js';
 
 // ファイルとして保存する。iPhone の Safari は、画面に付いていないリンクや、
@@ -18,7 +19,25 @@ export function downloadFile(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
-const defaultDeps = { download: downloadFile };
+const defaultDeps = {
+  download: downloadFile,
+  confirm: (text) => window.confirm(text),
+  listSongIds,
+  removeSongFiles,
+};
+
+export const CONFIRM_IMPORT = 'このスマホの 曲で、バックアップに 無い ものは 消えます。読み込みますか？';
+
+// 読み込んだあとの記録に無い曲のファイルを消す（容量をあける）。
+// 置き場の一覧が読めないときは、使っている曲まで消さないよう何もしない
+async function sweepFiles(d) {
+  const ids = await d.listSongIds();
+  if (!ids) return;
+  const known = new Set(loadState().songs.map((s) => s.id));
+  for (const id of ids) {
+    if (!known.has(id)) await d.removeSongFiles(id);
+  }
+}
 
 // 使っているほかの人のプログラム。MIT License は「著作権の文と許可の文を添える」決まりなので、
 // 著作権の文はここに、全文は licenses.txt（電波がなくても読めるよう先に保存する）に置く
@@ -53,17 +72,24 @@ function importInput(onText) {
 }
 
 export function renderSettings(root, params, deps = defaultDeps) {
+  const d = { ...defaultDeps, ...deps };
   requestPersist(); // 開いたとき一度だけ、記録を消さないようブラウザにお願いする
 
   function draw(message) {
-    const input = importInput((text) => {
-      const ok = text !== null && importBackup(text).ok;
-      draw(ok ? '読み込みました' : 'この ファイルは 読み込めません');
+    const input = importInput(async (text) => {
+      if (text === null) return draw('この ファイルは 読み込めません');
+      // 曲が1つでもあれば、置きかわって消える曲があることを先に伝える（「いいえ」なら何も変えない）
+      const asked = loadState().songs.length > 0;
+      if (asked && !d.confirm(CONFIRM_IMPORT)) return draw('読み込みを やめました');
+      if (!importBackup(text).ok) return draw('この ファイルは 読み込めません');
+      // 確認に「はい」と答えたときだけ掃除する。壊れたファイルでは何も消さない
+      if (asked) await sweepFiles(d);
+      draw('読み込みました');
     });
     root.replaceChildren(
       heading('せってい'),
       button('声の 地図を 測りなおす', () => go('stage2')),
-      button('記録を ファイルに 書き出す', () => deps.download(`koetore-backup-${todayString()}.json`, exportBackup())),
+      button('記録を ファイルに 書き出す', () => d.download(`koetore-backup-${todayString()}.json`, exportBackup())),
       button('ファイルから 読み込む', () => input.click()),
       input,
       ...(message ? [note(message)] : []),

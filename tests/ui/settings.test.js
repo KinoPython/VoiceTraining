@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { register, start, resetRoutes } from '../../src/router.js';
 import { renderSettings, downloadFile } from '../../src/screens/settings.js';
 import { exportBackup, loadState } from '../../src/storage/store.js';
+import { CONFIRM_IMPORT } from '../../src/screens/settings.js';
 import { findBanned } from '../../src/logic/words.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -96,6 +97,66 @@ describe('せってい', () => {
     const t = open().textContent;
     expect(findBanned(t)).toEqual([]);
     expect(t).not.toContain('連続');
+  });
+});
+
+describe('せってい：読み込みの確認と掃除', () => {
+  beforeEach(() => localStorage.clear());
+  const song = (id) => ({ id, title: id, hasFile: true, hasVocal: false, durationSec: 10, sections: [], keyAdvice: 0 });
+  const backup = () => JSON.stringify({ ...JSON.parse(localStorage.getItem('koetore.v1')), songs: [song('keep')] });
+  function setup(confirmAnswer, ids = ['keep', 'gone']) {
+    seed({ songs: [song('keep'), song('gone')] });
+    const text = backup();
+    const deps = {
+      download: vi.fn(), confirm: vi.fn(() => confirmAnswer),
+      listSongIds: vi.fn(async () => ids), removeSongFiles: vi.fn(async () => {}),
+    };
+    return { text, deps, root: open(deps) };
+  }
+
+  test('確認の文に禁止語が無い', () => {
+    expect(findBanned(CONFIRM_IMPORT)).toEqual([]);
+  });
+
+  test('「いいえ」なら、読み込まず、ファイルも消さず、記録も変わらない', async () => {
+    const { text, deps, root } = setup(false);
+    await pick(root, text);
+    expect(deps.confirm).toHaveBeenCalledWith('このスマホの 曲で、バックアップに 無い ものは 消えます。読み込みますか？');
+    expect(deps.removeSongFiles).not.toHaveBeenCalled();
+    expect(loadState().songs.map((s) => s.id)).toEqual(['keep', 'gone']);
+  });
+
+  test('「はい」なら、読み込んだあとの記録に無い曲のファイルだけ消す', async () => {
+    const { text, deps, root } = setup(true);
+    await pick(root, text);
+    expect(root.textContent).toContain('読み込みました');
+    expect(deps.removeSongFiles).toHaveBeenCalledTimes(1);
+    expect(deps.removeSongFiles).toHaveBeenCalledWith('gone');
+  });
+
+  test('置き場の一覧が読めない（null）ときは何も消さない', async () => {
+    const { text, deps, root } = setup(true, null);
+    await pick(root, text);
+    expect(deps.removeSongFiles).not.toHaveBeenCalled();
+  });
+
+  test('こわれたファイルなら何も消さない', async () => {
+    const { deps, root } = setup(true);
+    await pick(root, '{こわれた');
+    expect(root.textContent).toContain('この ファイルは 読み込めません');
+    expect(deps.removeSongFiles).not.toHaveBeenCalled();
+    expect(loadState().songs).toHaveLength(2);
+  });
+
+  test('曲が無いときは確認なしで読み込み、掃除もしない', async () => {
+    seed({});
+    const text = backup();
+    const deps = { download: vi.fn(), confirm: vi.fn(), listSongIds: vi.fn(async () => ['x']), removeSongFiles: vi.fn() };
+    const root = open(deps);
+    await pick(root, text);
+    expect(deps.confirm).not.toHaveBeenCalled();
+    expect(deps.removeSongFiles).not.toHaveBeenCalled();
+    expect(root.textContent).toContain('読み込みました');
   });
 });
 

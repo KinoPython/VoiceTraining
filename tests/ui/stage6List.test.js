@@ -334,23 +334,10 @@ describe('段6 保存の失敗・置き去りのファイル・メモリ', () =>
     expect(deps.requestPersist).toHaveBeenCalledTimes(1);
   });
 
-  test('一覧を開くと、記録に無い曲のファイル（置き去り）を消す', async () => {
-    addSong(song());
-    const deps = makeDeps({ listSongIds: vi.fn(async () => ['s1', 'orphan']) });
-    await open(deps);
-    expect(deps.removeSongFiles).toHaveBeenCalledWith('orphan');
-    expect(deps.removeSongFiles).not.toHaveBeenCalledWith('s1'); // 記録にある曲は消さない
-  });
-
-  test('置き場の一覧が読めない・記録が読めないときは、何も消さない', async () => {
-    addSong(song());
-    const deps = makeDeps({ listSongIds: vi.fn(async () => null) });
+  test('記録が空でファイルだけ残っていても、一覧を開いただけでは消さない', async () => {
+    const deps = makeDeps({ listSongIds: vi.fn(async () => ['orphan']) });
     await open(deps);
     expect(deps.removeSongFiles).not.toHaveBeenCalled();
-    localStorage.setItem('koetore.v1', '{こわれた');
-    const deps2 = makeDeps({ listSongIds: vi.fn(async () => ['s1']) });
-    await open(deps2);
-    expect(deps2.removeSongFiles).not.toHaveBeenCalled();
   });
 
   test('2つとも選んだら、1つずつ読み、線に使わない曲ファイルの音のデータは読まずに手放す', async () => {

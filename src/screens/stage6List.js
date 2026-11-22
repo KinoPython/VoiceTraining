@@ -5,9 +5,9 @@ import { button, heading, note } from '../ui/components.js';
 import { STAGE6_TEXT as T } from '../data/copy.js';
 import { CONFIG } from '../logic/config.js';
 import {
-  loadState, addSong, updateSong, removeSong, getSong, newId, requestPersist, isStateReadable,
+  loadState, addSong, updateSong, removeSong, getSong, newId, requestPersist,
 } from '../storage/store.js';
-import { putFile, getFile, removeSongFiles, listSongIds, isReadFailure } from '../storage/songFiles.js';
+import { putFile, getFile, removeSongFiles, isReadFailure } from '../storage/songFiles.js';
 import { extractLine, toNotes, keyAdvice, mixToMono } from '../logic/songLine.js';
 import { getAudioContext } from '../audio/tone.js';
 
@@ -18,7 +18,6 @@ const defaultDeps = {
   putFile,
   getFile,
   removeSongFiles,
-  listSongIds,
   requestPersist,
   confirm: (text) => window.confirm(text),
 };
@@ -37,7 +36,6 @@ export function renderStage6List(root, params, deps = defaultDeps) {
   const d = { ...defaultDeps, ...deps };
   let controller = null; // 線を作っている間だけある。画面を離れたら止める
   let disposed = false;
-  const adding = new Set(); // 追加の途中の曲の id（まだ記録に無いが、置き去りではない）
 
   // ---------- 一覧 ----------
   function showList() {
@@ -80,17 +78,6 @@ export function renderStage6List(root, params, deps = defaultDeps) {
     removeSong(song.id);
     await d.removeSongFiles(song.id);
     if (!disposed) showList();
-  }
-
-  // 記録に無い曲のファイル（消す途中で止まった・保存に失敗した）を消して、容量をあける。
-  // 記録や置き場の一覧が読めないときは、使っている曲まで消さないよう何もしない
-  async function removeOrphans() {
-    const ids = await d.listSongIds();
-    if (!ids || !isStateReadable()) return;
-    const known = new Set(loadState().songs.map((s) => s.id));
-    for (const id of ids) {
-      if (!known.has(id) && !adding.has(id)) await d.removeSongFiles(id);
-    }
   }
 
   // ---------- ファイルを選ぶ入力 ----------
@@ -251,11 +238,9 @@ export function renderStage6List(root, params, deps = defaultDeps) {
 
     // 保存。どれか失敗したら、入れた分も消して曲は足さない
     const id = newId();
-    adding.add(id);
     const failed = await saveFiles(id, picked, built.line, signal);
     if (failed) {
       await d.removeSongFiles(id);
-      adding.delete(id);
       if (failed !== 'aborted' && !disposed) showError(saveFailedText(failed), showForm);
       return;
     }
@@ -265,7 +250,6 @@ export function renderStage6List(root, params, deps = defaultDeps) {
       id, title, hasFile: Boolean(picked.file), hasVocal: Boolean(picked.vocal), durationSec: built.durationSec, sections: [],
       keyAdvice: keyAdvice(toNotes(built.line), loadState().range),
     });
-    adding.delete(id);
     if (!added.ok) {
       await d.removeSongFiles(id);
       controller = null;
@@ -320,7 +304,6 @@ export function renderStage6List(root, params, deps = defaultDeps) {
   const refileSong = params?.get?.('refile') ? getSong(params.get('refile')) : null;
   if (refileSong) showRefile(refileSong);
   else showList();
-  removeOrphans();
   return () => {
     disposed = true;
     controller?.abort(); // 作っている途中なら止める
