@@ -165,10 +165,16 @@ export function renderStage6List(root, params, deps = defaultDeps) {
     go('songYt', { id });
   }
 
-  // 保存する 中身。別の 動画に かえる ときは、前の 動画の 区間と 前回の 線が 合わなく なるので、たずねてから 消す。
-  // 「いいえ」なら null（何も 変えない）。消す（null）ときは ytSections を 残す（アドレスを また 足した とき 戻せる）
+  // 保存する 中身。別の 動画に かえる・YouTube を 外す ときは、前の 動画の 区間と 前回の 線が 使えなく なるので
+  // いっしょに 消す（残すと、あとで 別の 動画を 足した とき 合わない 区間が 残るため）。
+  // 消える 区間が ある ときだけ たずねる。「いいえ」なら null（何も 変えない）
   function ytPatch(song, youtubeId) {
-    const changing = song.youtubeId && youtubeId && youtubeId !== song.youtubeId;
+    const hasSections = (song.ytSections ?? []).length > 0;
+    if (youtubeId === null) {
+      if (hasSections && !d.confirm(T.ytConfirmClear)) return null;
+      return { youtubeId: null, ytSections: [] };
+    }
+    const changing = song.youtubeId && youtubeId !== song.youtubeId;
     if (!changing) return { youtubeId };
     if (!d.confirm(T.ytConfirmChange)) return null;
     return { youtubeId, ytSections: [] };

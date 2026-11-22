@@ -64,6 +64,7 @@ export const STAGE6_TEXT = {
   ytLabel: 'YouTube の アドレス（あとからでも 足せます）',
   ytSave: '保存',
   ytConfirmChange: '動画を かえると、この 動画の 区間と 前回の 線は 消えます。かえますか？',
+  ytConfirmClear: 'この 動画の 区間と 前回の 線も 消えます。YouTube を 外しますか？',
   ytOnlyNoClear: 'この 曲は YouTube だけです。曲を 消す ときは『消す』を 押して ください',
   ytNotice: 'YouTube で 練習する ときは、YouTube の 公式の プレーヤーを 読み込みます。このとき YouTube に つながり、見た 動画などの 情報が YouTube（Google）の 決まりで 送られます。マイクの 声は スマホの 外に 出ません。曲の ダウンロードや 録音は しません',
   ytRights: 'YouTube の 動画は、アプリの 中の YouTube の プレーヤーで 流すだけです。動画から 曲を 取り出したり、録音したり しないで ください。歌手や レコード会社の 公式の 動画を 選ぶと 安心です',

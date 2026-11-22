@@ -524,10 +524,11 @@ describe('段6② 曲に YouTube を足す', () => {
     expect(root.textContent).toContain('▶'); // 一覧に戻る
   });
 
-  test('空にして保存すると消える（曲ファイルの ある 曲）。ytSections は残る', async () => {
+  test('空にして保存：区間が ある ときは たずねて「はい」なら、アドレスと 区間・前回の 線を 消す（曲ファイルの ある 曲）', async () => {
     const sec = { id: 'y1', name: '区間1', startSec: 1, endSec: 3, lastLine: [], lastRatio: 0 };
     addSong(song({ hasFile: true, youtubeId: YT, ytSections: [sec] }));
-    const root = await open(makeDeps());
+    const deps = makeDeps({ confirm: vi.fn(() => true) });
+    const root = await open(deps);
     byLabel(root, 'YouTube').click();
     const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
     expect(y.value).toBe(YT_URL); // いまのアドレスが入っている
@@ -535,8 +536,37 @@ describe('段6② 曲に YouTube を足す', () => {
     y.dispatchEvent(new Event('input'));
     byLabel(root, '保存').click();
     await settle();
+    expect(deps.confirm).toHaveBeenCalledWith('この 動画の 区間と 前回の 線も 消えます。YouTube を 外しますか？');
     expect(getSong('s1').youtubeId).toBeNull();
-    expect(getSong('s1').ytSections).toHaveLength(1);
+    expect(getSong('s1').ytSections).toEqual([]);
+    expect(findBanned('この 動画の 区間と 前回の 線も 消えます。YouTube を 外しますか？')).toEqual([]);
+  });
+
+  test('空にして保存：「いいえ」なら 何も 変えない', async () => {
+    const sec = { id: 'y1', name: '区間1', startSec: 1, endSec: 3, lastLine: [], lastRatio: 0 };
+    addSong(song({ hasFile: true, youtubeId: YT, ytSections: [sec] }));
+    const deps = makeDeps({ confirm: vi.fn(() => false) });
+    const root = await open(deps);
+    byLabel(root, 'YouTube').click();
+    root.querySelector(`input[aria-label="${ytLabel}"]`).value = '';
+    byLabel(root, '保存').click();
+    await settle();
+    expect(deps.confirm).toHaveBeenCalledTimes(1);
+    expect(getSong('s1').youtubeId).toBe(YT);
+    expect(getSong('s1').ytSections).toEqual([sec]);
+  });
+
+  test('空にして保存：区間が 無ければ たずねずに 消す', async () => {
+    addSong(song({ hasFile: true, youtubeId: YT, ytSections: [] }));
+    const deps = makeDeps({ confirm: vi.fn(() => false) });
+    const root = await open(deps);
+    byLabel(root, 'YouTube').click();
+    root.querySelector(`input[aria-label="${ytLabel}"]`).value = '';
+    byLabel(root, '保存').click();
+    await settle();
+    expect(deps.confirm).not.toHaveBeenCalled();
+    expect(getSong('s1').youtubeId).toBeNull();
+    expect(getSong('s1').ytSections).toEqual([]);
   });
 
   test('不正なアドレスは ytBadId で、保存しない', async () => {
