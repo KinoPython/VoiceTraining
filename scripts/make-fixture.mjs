@@ -7,12 +7,12 @@ const SECONDS = 10;
 const HZ = 220;
 const AMPLITUDE = 0.5; // 割れない大きさで、無音判定（minRms）よりは十分大きく
 
-// 音のデータ本体（16bit の符号つき整数）
-function makeSamples() {
-  const count = RATE * SECONDS;
+// 音のデータ本体（16bit の符号つき整数）。hz が 0 なら無音
+function makeTone(hz, seconds) {
+  const count = Math.round(RATE * seconds);
   const data = Buffer.alloc(count * 2);
   for (let i = 0; i < count; i += 1) {
-    const value = Math.sin((2 * Math.PI * HZ * i) / RATE) * AMPLITUDE;
+    const value = hz === 0 ? 0 : Math.sin((2 * Math.PI * hz * i) / RATE) * AMPLITUDE;
     data.writeInt16LE(Math.round(value * 32767), i * 2);
   }
   return data;
@@ -37,5 +37,10 @@ function makeWav(data) {
 }
 
 mkdirSync('e2e/fixtures', { recursive: true });
-writeFileSync('e2e/fixtures/a3.wav', makeWav(makeSamples()));
+writeFileSync('e2e/fixtures/a3.wav', makeWav(makeTone(HZ, SECONDS)));
 console.log('e2e/fixtures/a3.wav を作りました');
+
+// 段6 の曲ファイル代わり：220Hz 2秒 → 無音 0.5秒 → 247Hz 2秒（音が2つに分かれる）
+const song = Buffer.concat([makeTone(220, 2), makeTone(0, 0.5), makeTone(247, 2)]);
+writeFileSync('e2e/fixtures/song.wav', makeWav(song));
+console.log('e2e/fixtures/song.wav を作りました');
