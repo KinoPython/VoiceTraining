@@ -65,4 +65,13 @@ export const STAGE6_TEXT = {
   ytLabel: 'YouTube の アドレス（あとからでも 足せます）',
   ytSave: '保存',
   ytNotice: 'YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません',
+  ytPractice: 'YouTube で 練習',
+  ytLoading: 'YouTube を 読み込んで います…',
+  ytPlay: '▶ 再生',
+  ytSetStart: 'ここを 始まりに',
+  ytSetEnd: 'ここを 終わりに',
+  ytLoop: '▶ 区間を くり返す',
+  ytRange: (from, to) => `区間：${from} 〜 ${to}`,
+  ytPickFirst: '先に 「ここを 始まりに」「ここを 終わりに」で 区間を 選んで ください',
+  ytBadRange: '終わりは 始まりより 0.5秒 より 後ろに して ください',
 };

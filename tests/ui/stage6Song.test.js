@@ -143,6 +143,26 @@ describe('段6 曲で練習する画面', () => {
     expect(root.textContent).toBe('曲の一覧');
   });
 
+  test('YouTube もある曲には「YouTube で 練習」が出て songYt へ行く', async () => {
+    addSong(song({ youtubeId: 'abcdefghijk' }));
+    const root = await open(makeDeps());
+    register('songYt', (r, params) => { r.textContent = `YouTube の画面 ${params.get('id')}`; });
+    await click(root, 'YouTube で 練習');
+    expect(root.textContent).toBe('YouTube の画面 s1');
+  });
+
+  test('YouTube の無い曲には「YouTube で 練習」が出ない', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    expect(byLabel(root, 'YouTube で 練習')).toBeUndefined();
+  });
+
+  test('ファイルが無くても YouTube があれば、選びなおしの画面から「YouTube で 練習」へ行ける', async () => {
+    addSong(song({ youtubeId: 'abcdefghijk' }));
+    const root = await open(makeDeps({ getFile: vi.fn(async () => null) }));
+    expect(byLabel(root, 'YouTube で 練習')).toBeTruthy();
+  });
+
   test('知らない曲の id でも止まらない', async () => {
     const root = await open(makeDeps(), 'nothing');
     expect(root.textContent).toContain('ファイルを もう一度 選んで ください');

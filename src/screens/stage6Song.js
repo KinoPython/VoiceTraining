@@ -20,7 +20,8 @@ import { STAGE6_TEXT as T, SAFETY_LINES } from '../data/copy.js';
 
 const defaultDeps = { openMic, createSongPlayer, getFile, whenSpeakerRestored, confirm: (text) => window.confirm(text) };
 
-const TEXT = {
+// 区間の保存・消す・上書きの文は、YouTube の画面（stage6Yt.js）でも同じ文を使う
+export const TEXT = {
   keyAdvice: (n) => `この 曲は、カラオケの キーを ${n}つ（半音 ${n}つ）下げると 楽に なりそう です（目安）。`,
   octaveNote: 'お手本より 1オクターブ 下・上で 歌っても 大丈夫です',
   lineNote: 'お手本の 線は 目安です。線を 指で なぞって、練習する 区間を 選びます',
@@ -62,7 +63,7 @@ const TEXT = {
   stopped: 'マイクが 止まりました。',
 };
 
-const RATE_LABEL = (r) => `${r}倍`;
+export const RATE_LABEL = (r) => `${r}倍`;
 const SOURCE_LABEL = { file: '原曲', vocal: '歌声だけ' };
 const VERDICT_TEXT = { ok: '合って いた', high: '少し 高め（少し 下げて みよう）', low: '少し 低め（少し 上げて みよう）', none: '声が 聞こえませんでした' };
 const noop = () => {};
@@ -71,7 +72,7 @@ const DEFAULT_WINDOW_MS = 6000; // 線グラフのふつうの窓（pitchGraph.j
 const sectionMsOf = (section) => (section.endSec - section.startSec) * 1000;
 
 // まだ使っていない一番小さい番号で「区間○」と名づける
-function nextSectionName(sections) {
+export function nextSectionName(sections) {
   const used = new Set(sections.map((c) => c.name));
   let n = 1;
   while (used.has(`区間${n}`)) n += 1;
@@ -187,6 +188,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   function showMissing() {
     const items = [title(), note(T.refile)];
     if (song) items.push(button(T.refileButton, () => go('stage6', { refile: song.id })));
+    if (song?.youtubeId) items.push(ytButton()); // ファイルが無くても YouTube では練習できる
     items.push(button(TEXT.toList, () => go('stage6')));
     root.replaceChildren(...items);
   }
@@ -198,6 +200,9 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
       button(TEXT.toList, () => go('stage6')),
     );
   }
+
+  // YouTube もある曲だけ、YouTube の練習の画面へのボタンを出す
+  const ytButton = () => button(T.ytPractice, () => go('songYt', { id: song.id }));
 
   function showStopped() {
     stopEverything();
@@ -339,8 +344,10 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
       note(TEXT.lineNote), note(TEXT.octaveNote), canvas, nudgeButtons(), sectionButtons(),
       button(TEXT.saveSection, saveCurrent), actionBox, message,
       button(TEXT.listen, listen), button(TEXT.stop, stopEverything), button(TEXT.sing, askEarphone),
-      ...settingRows(), note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.finish, finishSession),
+      ...settingRows(),
     );
+    if (song.youtubeId) items.push(ytButton());
+    items.push(note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.finish, finishSession));
     root.replaceChildren(...items);
   }
 
