@@ -54,6 +54,8 @@ const SOURCE_LABEL = { file: '原曲', vocal: '歌声だけ' };
 const VERDICT_TEXT = { ok: '合って いた', high: '高め', low: '低め', none: '声が 聞こえませんでした' };
 const noop = () => {};
 const percent = (ratio) => Math.round(ratio * 100);
+const DEFAULT_WINDOW_MS = 6000; // 線グラフのふつうの窓（pitchGraph.js と同じ）
+const sectionMsOf = (section) => (section.endSec - section.startSec) * 1000;
 
 // まだ使っていない一番小さい番号で「区間○」と名づける
 function nextSectionName(sections) {
@@ -209,7 +211,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
       .catch(() => { if (myRun === runId && !disposed) setMessage(TEXT.cantPlay); });
   }
 
-  // 速さ・聞く音を変えたら、聞いている途中でもそのまま新しい設定で流しなおす
+  // 速さ・聞く音を変えたら、いまの再生は止める（次に「聞く」を押すと新しい設定で流す）
   function changeSetting(apply) {
     apply();
     stopEverything();
@@ -276,7 +278,9 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     const sectionNotes = notesInSection(notes, section.startSec, section.endSec);
     const previous = savedSection(section.sectionId);
     const canvas = document.createElement('canvas');
-    const graph = createPitchGraph(canvas, graphRange(sectionNotes));
+    // 長い区間でも、歌い終わったとき区間ぜんぶ（前奏から）と前回の線が見えるよう、窓を区間の長さに合わせる
+    const windowMs = Math.max(DEFAULT_WINDOW_MS, sectionMsOf(section) + CONFIG.stage6.leadInSec * 1000);
+    const graph = createPitchGraph(canvas, { ...graphRange(sectionNotes), windowMs });
     const bands = bandsFor(sectionNotes);
     graph.setBands(bands);
     if (previous?.lastLine) graph.setGhost(previous.lastLine); // 前回の自分の線を薄く重ねる
@@ -287,7 +291,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     // 区間の少し前から1回だけ流す。歌う間はスピーカーを借りない（イヤホンで聞く）
     const fromSec = Math.max(0, section.startSec - CONFIG.stage6.leadInSec);
     player.play({ fromSec, toSec: section.endSec, rate, source, loop: false, speaker: false }).then(
-      () => { if (myRun === runId && !disposed) endSinging({ section, sectionNotes, bands, previous, readings, canvas }); },
+      () => { if (myRun === runId && !disposed) endSinging({ section, sectionNotes, bands, previous, readings, canvas, graph }); },
       () => { if (myRun === runId && !disposed) showMain(TEXT.cantPlay); },
     );
   }
@@ -296,7 +300,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   // 曲の位置で測るので、ゆっくり流しても帯・前回の線と同じ時間の目盛りになる
   function collect(mic, section, graph) {
     const readings = [];
-    const sectionMs = (section.endSec - section.startSec) * 1000;
+    const sectionMs = sectionMsOf(section);
     cancelSing = () => { mic.onFrame(noop); cancelSing = null; };
     mic.onFrame((midi) => {
       const t = (player.currentSec() - section.startSec) * 1000;
@@ -310,23 +314,24 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
 
   function endSinging(run) {
     if (cancelSing) cancelSing();
+    run.graph.push(sectionMsOf(run.section), null); // 時計を区間の終わりまで進め、区間ぜんぶを窓に入れる
     // マイクの遅れは本当の時間。曲の位置に直すと、ゆっくり流したぶん短くなる
     const latencyMs = CONFIG.stage6.latencyMs * rate;
     const { ratio, verdicts } = scoreSection(run.readings, run.sectionNotes, tolerance, latencyMs);
-    recordTry(ratio, run);
-    showResult(ratio, verdicts, run);
+    const kept = recordTry(ratio, run);
+    showResult(ratio, verdicts, run, kept);
   }
 
-  // 1回分を数え、保存した区間なら今回の線と合いぐあいを残す（声そのものは残さない）
-  function recordTry(ratio, { section, previous, readings }) {
+  // 1回分を数え、保存した区間なら今回の線と合いぐあいを残す（声そのものは残さない）。
+  // お手本の声が無い区間は測れないので、前回の線・合いぐあいは書きかえない。残せなかったら false
+  function recordTry(ratio, { previous, readings }) {
     if (ratio !== null) {
       tries += 1;
       scores.push(ratio);
       if (ratio >= CONFIG.stage5.passRatio) successes += 1;
     }
-    if (previous) {
-      saveSection(songId, { ...previous, lastLine: lineToGhost(readings), lastRatio: ratio ?? previous.lastRatio });
-    }
+    if (!previous || ratio === null) return true;
+    return saveSection(songId, { ...previous, lastLine: lineToGhost(readings), lastRatio: ratio }).ok;
   }
 
   function verdictList(sectionNotes, verdicts) {
@@ -339,7 +344,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     return list;
   }
 
-  function showResult(ratio, verdicts, { sectionNotes, bands, previous, canvas }) {
+  function showResult(ratio, verdicts, { sectionNotes, bands, previous, canvas }, kept) {
     const items = [title(), canvas];
     if (ratio === null) {
       items.push(note(TEXT.noModel));
@@ -349,6 +354,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
       items.push(verdictList(sectionNotes, verdicts));
     }
     if (bands.some((b) => b.over)) items.push(note(TEXT.overCare));
+    if (!kept) items.push(note(T.saveFailedOther));
     items.push(button(TEXT.again, askEarphone), button(TEXT.back, () => showMain('')), button(TEXT.finish, finishSession));
     message = null;
     root.replaceChildren(...items);

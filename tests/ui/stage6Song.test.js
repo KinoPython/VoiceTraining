@@ -1,4 +1,18 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+
+// 線グラフの作り方（窓の長さ）と push の時刻を記録する（中身は本物のまま）
+const graphLog = vi.hoisted(() => ({ options: [], pushes: [] }));
+vi.mock('../../src/ui/pitchGraph.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    createPitchGraph: (canvas, options) => {
+      graphLog.options.push(options);
+      const g = actual.createPitchGraph(canvas, options);
+      return { ...g, push: (now, midi) => { graphLog.pushes.push({ t: now, midi }); g.push(now, midi); } };
+    },
+  };
+});
 import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage6Song } from '../../src/screens/stage6Song.js';
 import { findBanned } from '../../src/logic/words.js';
@@ -102,6 +116,8 @@ describe('段6 曲で練習する画面', () => {
   beforeEach(() => {
     localStorage.clear();
     saveRange({ comfort: 55, low: 50, high: 67 });
+    graphLog.options = [];
+    graphLog.pushes = [];
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   });
 
@@ -133,6 +149,7 @@ describe('段6 曲で練習する画面', () => {
     await click(root, '歌声だけ');
     await click(root, '▶ 聞く');
     expect(player.play).toHaveBeenLastCalledWith({ fromSec: 4, toSec: 6, rate: 0.75, source: 'vocal', loop: true, speaker: true });
+    player.stop.mockClear();
     await click(root, '■ 止める');
     expect(player.stop).toHaveBeenCalled();
   });
@@ -269,8 +286,10 @@ describe('段6 曲で練習する画面', () => {
     addSong(song());
     const root = await open(makeDeps());
     await singSection(root, SING, () => 64);
+    player.stop.mockClear();
     go('home');
     await settle();
+    expect(player.stop).toHaveBeenCalled();
     expect(player.dispose).toHaveBeenCalled();
     expect(mic.close).toHaveBeenCalled();
     const h = loadState().history;
@@ -306,11 +325,65 @@ describe('段6 曲で練習する画面', () => {
     await click(root, 'つけた');
     player.sec = 4.5;
     mic.emit(64);
+    player.stop.mockClear();
     go('home');
     await settle();
     expect(player.stop).toHaveBeenCalled();
     expect(mic.close).toHaveBeenCalled();
     expect(loadState().history).toHaveLength(0);
     expect(root.textContent).toBe('ホーム');
+  });
+
+  test('長い区間（12秒）でも、歌い終わると区間の始まりからの線が窓に入っている', async () => {
+    const long = { id: 'c3', name: '区間3', startSec: 0, endSec: 12, lastLine: [{ t: 0, midi: 60 }], lastRatio: 0.5 };
+    addSong(song({ durationSec: 12, sections: [long] }));
+    const root = await open(makeDeps());
+    await singSection(root, long, () => 60);
+    const { windowMs } = graphLog.options.at(-1);
+    expect(windowMs).toBeGreaterThanOrEqual(12000);
+    const last = graphLog.pushes.at(-1).t;
+    expect(last).toBe(12000);
+    const firstVoiced = graphLog.pushes.find((p) => p.midi !== null).t;
+    expect(firstVoiced).toBe(0);
+    expect(firstVoiced).toBeGreaterThanOrEqual(last - windowMs); // 捨てられずに見えている
+    expect(root.textContent).toMatch(/前回：50%/);
+  });
+
+  test('短い区間は、ふつうの窓（6秒）のまま', async () => {
+    const short = { id: 'c4', name: '区間4', startSec: 4, endSec: 5, lastLine: null, lastRatio: null };
+    addSong(song({ sections: [short] }));
+    const root = await open(makeDeps());
+    await singSection(root, short, () => 64);
+    expect(graphLog.options.at(-1).windowMs).toBe(6000);
+  });
+
+  test('お手本の声が無い区間で歌っても、前回の線と合いぐあいは書きかえない', async () => {
+    const before = { ...INTERLUDE, lastLine: [{ t: 0, midi: 60 }], lastRatio: 0.4 };
+    addSong(song({ sections: [before] }));
+    const root = await open(makeDeps());
+    await singSection(root, before, () => 60);
+    expect(root.textContent).toContain('お手本の 声が ありません');
+    expect(getSong('s1').sections[0]).toMatchObject({ lastLine: [{ t: 0, midi: 60 }], lastRatio: 0.4 });
+  });
+
+  test('「聞く」で再生が拒まれたら「曲を 流せませんでした」', async () => {
+    addSong(song());
+    const deps = makeDeps();
+    player.play.mockImplementation(() => Promise.reject(new Error('拒否')));
+    const root = await open(deps);
+    await click(root, '▶ 聞く');
+    expect(root.textContent).toContain('曲を 流せませんでした');
+  });
+
+  test('「歌う」で再生が拒まれたら、もとの画面に戻って「曲を 流せませんでした」', async () => {
+    addSong(song());
+    const deps = makeDeps();
+    player.play.mockImplementation(() => Promise.reject(new Error('拒否')));
+    const root = await open(deps);
+    await click(root, '● 歌う');
+    await click(root, 'つけた');
+    expect(root.textContent).toContain('曲を 流せませんでした');
+    expect(byLabel(root, '● 歌う')).toBeTruthy();
+    expect(loadState().history).toHaveLength(0);
   });
 });
