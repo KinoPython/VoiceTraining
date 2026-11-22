@@ -9,7 +9,7 @@ import { openMic } from '../audio/mic.js';
 import { createSongPlayer } from '../audio/songPlayer.js';
 import { whenSpeakerRestored } from '../audio/tone.js';
 import { getFile, isReadFailure } from '../storage/songFiles.js';
-import { loadState, getSong, saveSection, addHistory, newId } from '../storage/store.js';
+import { loadState, getSong, saveSection, removeSection, addHistory, newId } from '../storage/store.js';
 import { toNotes, keyAdvice } from '../logic/songLine.js';
 import { notesInSection, scoreSection, lineToGhost } from '../logic/songScore.js';
 import { toleranceFor } from '../logic/targets.js';
@@ -18,7 +18,7 @@ import { CONFIG } from '../logic/config.js';
 import { todayString } from '../logic/today.js';
 import { STAGE6_TEXT as T, SAFETY_LINES } from '../data/copy.js';
 
-const defaultDeps = { openMic, createSongPlayer, getFile, whenSpeakerRestored };
+const defaultDeps = { openMic, createSongPlayer, getFile, whenSpeakerRestored, confirm: (text) => window.confirm(text) };
 
 const TEXT = {
   keyAdvice: (n) => `この 曲は、カラオケの キーを ${n}つ（半音 ${n}つ）下げると 楽に なりそう です（目安）。`,
@@ -27,7 +27,13 @@ const TEXT = {
   pickFirst: '先に 線を なぞって 区間を 選んで ください',
   saveSection: '区間を 保存',
   saved: '区間を 保存しました',
-  max: `保存できる 区間は ${CONFIG.stage6.maxSections}つ までです`,
+  max: `保存できる 区間は ${CONFIG.stage6.maxSections}つ までです。いらない 区間を 消すと 保存できます`,
+  remove: '区間を 消す',
+  confirmRemove: 'この 区間を 消しますか？',
+  notSaved: 'まだ 保存して いません',
+  overwrite: '上書きする',
+  saveAsNew: '新しい 区間として 保存',
+  confirmOverwrite: '前回の 線と 合いぐあいは 消えます。上書きしますか？',
   listen: '▶ 聞く',
   stop: '■ 止める',
   sing: '● 歌う',
@@ -101,7 +107,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   let player = null;
   let overview = null;
   let message = null; // いまの画面の案内の文（無い画面もある）
-  let selection = null; // { startSec, endSec, sectionId }。保存していない区間は sectionId が null
+  let selection = null; // { startSec, endSec, sectionId, dirty }。sectionId は元にした保存区間（無ければ null）。dirty は範囲を動かして保存と食いちがう印
   let rate = 1;
   let source = 'file';
   const available = { file: false, vocal: false }; // 見つかったファイル。聞く音はある方だけ選べる
@@ -173,7 +179,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     player = d.createSongPlayer({ fileBlob, vocalBlob });
     player.onTime((sec) => overview?.setPlayhead(sec));
     const first = song.sections[0];
-    if (first) selection = { startSec: first.startSec, endSec: first.endSec, sectionId: first.id };
+    if (first) selection = { startSec: first.startSec, endSec: first.endSec, sectionId: first.id, dirty: false };
     showMain('');
   }
 
@@ -200,12 +206,19 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   }
 
   // ---------- 区間を選ぶ・聞く ----------
-  function select(startSec, endSec, sectionId) {
+  function select(startSec, endSec, sectionId, dirty = false) {
     stopEverything();
-    selection = { startSec, endSec, sectionId };
+    selection = { startSec, endSec, sectionId, dirty };
     overview?.setSelection(startSec, endSec);
     setMessage('');
+    refreshActions();
   }
+
+  // 範囲を動かしたとき：保存した区間が元なら、元の id を覚えたまま「保存と食いちがう」印をつける
+  const selectChanged = (startSec, endSec) => {
+    const origin = selection?.sectionId ?? null;
+    select(startSec, endSec, origin, origin !== null);
+  };
 
   // 区間の端を nudgeSec ずつ動かす（指でなぞるだけでは細かく合わせにくいため）。
   // 曲の外には出さず、区間が nudgeSec より短くなる・入れかわるときは動かさない
@@ -216,7 +229,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     if (edge === 'start') startSec = clampSec(startSec + delta);
     else endSec = clampSec(endSec + delta);
     if (!(startSec < endSec - CONFIG.stage6.nudgeSec)) return;
-    select(startSec, endSec, null); // 動かした区間は、保存していない区間になる（「区間を 保存」で残せる）
+    selectChanged(startSec, endSec); // 動かした区間は、保存と食いちがう（「上書き」か「新しい 区間として 保存」で残せる）
   }
 
   function nudgeButtons() {
@@ -240,9 +253,41 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     return box;
   }
 
+  // 「消す」「上書き」のボタン。選びなおすたびに出しなおす
+  let actionBox = null;
+  function refreshActions() {
+    if (!actionBox) return;
+    const items = [];
+    if (selection?.sectionId) items.push(button(TEXT.remove, removeCurrent));
+    if (selection?.dirty) {
+      items.push(note(TEXT.notSaved), button(TEXT.overwrite, overwriteCurrent), button(TEXT.saveAsNew, saveCurrent));
+    }
+    actionBox.replaceChildren(...items);
+  }
+
+  function removeCurrent() {
+    if (!selection?.sectionId || !d.confirm(TEXT.confirmRemove)) return;
+    removeSection(songId, selection.sectionId);
+    selection = null; // 消したあとは何も選んでいない
+    showMain('');
+  }
+
+  // 同じ id・新しい範囲で保存する。前回の線と合いぐあいは、範囲がちがうので消す
+  function overwriteCurrent() {
+    const target = savedSection(selection?.sectionId);
+    if (!target || !selection.dirty) return;
+    if (!d.confirm(TEXT.confirmOverwrite)) return;
+    const result = saveSection(songId, {
+      ...target, startSec: selection.startSec, endSec: selection.endSec, lastLine: null, lastRatio: null,
+    });
+    if (!result.ok) return setMessage(T.saveFailedOther);
+    selection = { ...selection, dirty: false };
+    showMain(TEXT.saved);
+  }
+
   function saveCurrent() {
     if (!selection) return setMessage(TEXT.pickFirst);
-    if (selection.sectionId) return setMessage(TEXT.saved);
+    if (selection.sectionId && !selection.dirty) return setMessage(TEXT.saved);
     const sections = getSong(songId)?.sections ?? [];
     const section = {
       id: newId(), name: nextSectionName(sections),
@@ -250,7 +295,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     };
     const result = saveSection(songId, section);
     if (!result.ok) return setMessage(result.reason === 'max' ? TEXT.max : T.saveFailedOther);
-    selection = { ...selection, sectionId: section.id };
+    selection = { ...selection, sectionId: section.id, dirty: false };
     showMain(TEXT.saved); // 新しい区間のボタンを出すため、描きなおす
   }
 
@@ -283,14 +328,16 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     message = note(text);
     const canvas = document.createElement('canvas');
     overview = createSongOverview(canvas, {
-      notes, durationSec: song.durationSec, onSelect: (a, b) => select(a, b, null),
+      notes, durationSec: song.durationSec, onSelect: selectChanged,
     });
     if (selection) overview.setSelection(selection.startSec, selection.endSec);
+    actionBox = document.createElement('div');
+    refreshActions();
     const items = [title()];
     if (advice > 0) items.push(note(TEXT.keyAdvice(advice)));
     items.push(
       note(TEXT.lineNote), note(TEXT.octaveNote), canvas, nudgeButtons(), sectionButtons(),
-      button(TEXT.saveSection, saveCurrent), message,
+      button(TEXT.saveSection, saveCurrent), actionBox, message,
       button(TEXT.listen, listen), button(TEXT.stop, stopEverything), button(TEXT.sing, askEarphone),
       ...settingRows(), note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.finish, finishSession),
     );
@@ -333,7 +380,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     if (myRun !== runId || disposed) return;
     const section = { ...selection };
     const sectionNotes = notesInSection(notes, section.startSec, section.endSec);
-    const previous = savedSection(section.sectionId);
+    const previous = section.dirty ? null : savedSection(section.sectionId); // 範囲を動かしたあとは前回の線と合わない
     const canvas = document.createElement('canvas');
     // 長い区間でも、歌い終わったとき区間ぜんぶ（前奏から）と前回の線が見えるよう、窓を区間の長さに合わせる
     const windowMs = Math.max(DEFAULT_WINDOW_MS, sectionMsOf(section) + CONFIG.stage6.leadInSec * 1000);

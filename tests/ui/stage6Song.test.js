@@ -536,4 +536,77 @@ describe('段6 曲で練習する画面', () => {
     expect(root.textContent).toMatch(/いまの 合いぐあい：\d+%/);
     expect(root.textContent).toContain('保存できませんでした。もう一度 ためして ください');
   });
+  describe('区間を消す・上書きする', () => {
+    const MAX_TEXT = '保存できる 区間は 5つ までです。いらない 区間を 消すと 保存できます';
+    const five = () => [SING, INTERLUDE, ...[3, 4, 5].map((n) => ({ id: `x${n}`, name: `区間${n}`, startSec: n, endSec: n + 1, lastLine: null, lastRatio: null }))];
+    const withConfirm = (answer) => makeDeps({ confirm: vi.fn(() => answer) });
+
+    test('5つ保存してあると、保存しようとしたとき「消すと 保存できます」と案内する', async () => {
+      addSong(song({ sections: five() }));
+      const root = await open(withConfirm(true));
+      await click(root, '始まりを 0.5秒 前へ');
+      await click(root, '新しい 区間として 保存');
+      expect(root.textContent).toContain(MAX_TEXT);
+      expect(findBanned(root.textContent)).toEqual([]);
+    });
+
+    test('保存した区間を選ぶと「区間を 消す」が出る。confirm が false なら消えない', async () => {
+      addSong(song());
+      const deps = withConfirm(false);
+      const root = await open(deps);
+      await click(root, '区間を 消す');
+      expect(deps.confirm).toHaveBeenCalledWith('この 区間を 消しますか？');
+      expect(getSong('s1').sections).toHaveLength(2);
+    });
+
+    test('confirm が true なら1つ減り、選択がなくなり、そのあと新しい区間を保存できる', async () => {
+      addSong(song({ sections: five() }));
+      const root = await open(withConfirm(true));
+      await click(root, '区間を 消す');
+      expect(getSong('s1').sections.map((c) => c.id)).toEqual(['c2', 'x3', 'x4', 'x5']);
+      expect(byLabel(root, '区間1')).toBeUndefined();
+      expect(byLabel(root, '区間を 消す')).toBeUndefined(); // 何も選んでいない
+      await click(root, '▶ 聞く');
+      expect(root.textContent).toContain('線を なぞって 区間を 選んで ください');
+      await click(root, '区間2'); // 別の区間を選び、動かして新しい区間として保存
+      await click(root, '始まりを 0.5秒 前へ');
+      await click(root, '新しい 区間として 保存');
+      expect(getSong('s1').sections).toHaveLength(5);
+      expect(root.textContent).not.toContain(MAX_TEXT);
+    });
+
+    test('保存した区間の端を動かすと「まだ 保存して いません」と2つのボタンが出る', async () => {
+      addSong(song());
+      const root = await open(withConfirm(true));
+      expect(byLabel(root, '上書きする')).toBeUndefined();
+      await click(root, '終わりを 0.5秒 後ろへ');
+      expect(root.textContent).toContain('まだ 保存して いません');
+      expect(byLabel(root, '上書きする')).toBeTruthy();
+      expect(byLabel(root, '新しい 区間として 保存')).toBeTruthy();
+      expect(findBanned(root.textContent)).toEqual([]);
+    });
+
+    test('「上書きする」：confirm が false なら範囲も前回の線も変わらない', async () => {
+      const kept = { ...SING, lastLine: [{ t: 0, midi: 64 }], lastRatio: 0.8 };
+      addSong(song({ sections: [kept] }));
+      const deps = withConfirm(false);
+      const root = await open(deps);
+      await click(root, '終わりを 0.5秒 後ろへ');
+      await click(root, '上書きする');
+      expect(deps.confirm).toHaveBeenCalledWith('前回の 線と 合いぐあいは 消えます。上書きしますか？');
+      expect(getSong('s1').sections[0]).toMatchObject({ startSec: 4, endSec: 6, lastRatio: 0.8 });
+    });
+
+    test('「上書きする」：confirm が true なら同じ id で範囲が新しくなり、線と合いぐあいが null になる', async () => {
+      const kept = { ...SING, lastLine: [{ t: 0, midi: 64 }], lastRatio: 0.8 };
+      addSong(song({ sections: [kept] }));
+      const root = await open(withConfirm(true));
+      await click(root, '終わりを 0.5秒 後ろへ');
+      await click(root, '上書きする');
+      const sections = getSong('s1').sections;
+      expect(sections).toHaveLength(1);
+      expect(sections[0]).toMatchObject({ id: 'c1', name: '区間1', startSec: 4, endSec: 6.5, lastLine: null, lastRatio: null });
+      expect(byLabel(root, '上書きする')).toBeUndefined(); // もう食いちがいは無い
+    });
+  });
 });
