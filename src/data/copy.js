@@ -6,6 +6,7 @@ export const STAGES = [
   { n: 3, route: 'stage3', name: 'すべらせて 止める', desc: '声を ゆっくり 上げて、目標で 止めます' },
   { n: 4, route: 'stage4', name: '1音 合わせ', desc: 'お手本と 同じ 高さの 声を 出します' },
   { n: 5, route: 'stage5', name: '短い メロディ', desc: '2〜5音の 短い メロディを 歌います' },
+  { n: 6, route: 'stage6', name: '好きな 曲', desc: '買った 曲で、お手本の 線と 重ねて 練習します' },
 ];
 
 // 安全の一言（welcome・safety・warmup に出す）
@@ -21,3 +22,30 @@ export const PRIVACY_LINE =
 
 // 段2を測る前に、段3〜5へ出す一言
 export const MAP_FIRST_HINT = '先に 声の 地図を 測ると、あなたの 高さで 練習できます';
+
+// 段6 曲の一覧と追加の画面の文
+export const STAGE6_TEXT = {
+  title: '好きな 曲',
+  earphone: '曲に 合わせて 歌う ときは、イヤホンが 必要です。',
+  highCare: '高い 所を 無理に くり返さない ように しましょう。',
+  empty: 'まだ 曲が ありません。',
+  add: '＋ 曲を 足す',
+  titleLabel: '曲名',
+  pickFile: '曲の ファイルを 選ぶ',
+  pickVocal: '歌声だけの ファイルを 選ぶ',
+  guide: '歌声だけの ファイルの 作り方 ›',
+  submit: '追加する',
+  cancel: 'やめる',
+  needTitle: '曲名を 入れて ください',
+  needFile: 'ファイルを 1つ 以上 選んで ください',
+  unreadable: 'この ファイルは 読めません',
+  mismatch: '同じ 曲か 確かめて ください',
+  mixed: '伴奏が まざって いるので、線は 目安です',
+  building: 'お手本の 線を 作って います…',
+  saveFailed: '保存できませんでした。ほかの 曲を 消すと 入る ことが あります',
+  saveFailedOther: '保存できませんでした。もう一度 ためして ください',
+  refile: 'ファイルを もう一度 選んで ください',
+  confirmDelete: 'この 曲を 消しますか？（スマホの中の ファイルも 消えます）',
+  toSong: '曲の 画面へ',
+  remove: '消す',
+};

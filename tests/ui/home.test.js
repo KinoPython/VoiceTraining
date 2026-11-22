@@ -44,7 +44,7 @@ describe('ホーム', () => {
     seed({});
     const root = await open();
     const hint = '先に 声の 地図を 測ると、あなたの 高さで 練習できます';
-    expect(root.textContent.split(hint).length - 1).toBe(3);
+    expect(root.textContent.split(hint).length - 1).toBe(4);
   });
 
   test('range があると、その一言は出ない', async () => {
@@ -59,6 +59,13 @@ describe('ホーム', () => {
     [...root.querySelectorAll('button')].find((b) => b.textContent === '▶ はじめる').click();
     await settle();
     expect(location.hash).toBe('#warmup?next=stage1');
+  });
+
+  test('段6のカードが出て、おすすめは段6にならない', async () => {
+    seed({ history: [did1], range, levels: { s1: 4, s3: 4, s4: 4, s5: 4 } });
+    const root = await open();
+    expect(root.querySelector('.others').textContent).toContain('段6「好きな 曲」');
+    expect(root.querySelector('.recommend').textContent).toContain('短い メロディ');
   });
 
   test('下に 4つのリンクがある', async () => {
