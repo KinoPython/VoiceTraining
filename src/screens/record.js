@@ -93,6 +93,18 @@ function stageLine(stage, list) {
   return `${name}　${countText(list)}`;
 }
 
+// 段6は曲ごとに1行：回数は足し、合いぐあいは「回数で重みをつけた平均」にする
+function stage6Lines(list) {
+  const bySong = new Map();
+  for (const h of list) bySong.set(h.songTitle, [...(bySong.get(h.songTitle) ?? []), h]);
+  return [...bySong.entries()].map(([title, items]) => {
+    const tries = sum(items, 'tries');
+    const weighted = items.reduce((total, h) => total + h.value * h.tries, 0);
+    const avg = tries > 0 ? weighted / tries : 0;
+    return `好きな 曲：${title}　${countText(items)}・合いぐあい 平均 ${Math.round(avg * 100)}%（目安）`;
+  });
+}
+
 // 日付ごと（新しい順）→ 段ごと（段の順）にまとめる
 function groupByDay(history) {
   const days = new Map();
@@ -111,7 +123,9 @@ function dailyList(history) {
     card.className = 'card';
     card.append(note(date));
     for (const stage of [...stages.keys()].sort((a, b) => a - b)) {
-      card.append(note(stageLine(stage, stages.get(stage))));
+      const list = stages.get(stage);
+      const lines = stage === 6 ? stage6Lines(list) : [stageLine(stage, list)];
+      for (const line of lines) card.append(note(line));
     }
     wrap.append(card);
   }

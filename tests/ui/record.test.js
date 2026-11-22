@@ -59,6 +59,18 @@ describe('きろく', () => {
     expect(t).toContain('合いぐあい 平均 76%（目安）');
   });
 
+  test('段6は曲ごとに1行：回数は足し、合いぐあいは回数で重みをつけた平均', () => {
+    seed({ history: [
+      { date: '2026-11-20', stage: 6, tries: 1, successes: 1, value: 1, songTitle: '青い空' },
+      { date: '2026-11-20', stage: 6, tries: 3, successes: 2, value: 0.6, songTitle: '青い空' },
+      { date: '2026-11-20', stage: 6, tries: 2, successes: 1, value: 0.5, songTitle: '夜のうた' },
+    ] });
+    const t = open().textContent;
+    expect(t).toContain('好きな 曲：青い空　4回 中 3回 できた・合いぐあい 平均 70%（目安）');
+    expect(t).toContain('好きな 曲：夜のうた　2回 中 1回 できた・合いぐあい 平均 50%（目安）');
+    expect(findBanned(t)).toEqual([]);
+  });
+
   test('声の地図があれば鍵盤を出す', () => {
     seed({ range });
     expect(open().querySelector('svg.keyboard')).not.toBeNull();
