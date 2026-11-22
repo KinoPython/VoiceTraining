@@ -74,6 +74,7 @@ async function addYoutubeSong(page) {
   await page.getByRole('button', { name: '＋ 曲を 足す' }).click();
   await page.getByLabel('曲名').fill('ネット曲');
   await page.getByLabel('YouTube の アドレス（あとからでも 足せます）').fill('https://youtu.be/dQw4w9WgXcQ');
+  await expect(page.getByText('動画から 曲を 取り出したり、録音したり しないで ください')).toBeVisible();
   await page.getByRole('button', { name: '追加する' }).click();
 }
 
@@ -83,8 +84,9 @@ test('YouTube だけの曲を足し、区間を決めてくり返し、保存し
   await seedAndOpenList(page);
   await addYoutubeSong(page);
 
-  // 曲の画面（YouTube）が開き、偽のプレーヤーが作られる
+  // 曲の画面（YouTube）が開き、偽のプレーヤーが作られる。YouTube に つながる お知らせも この画面に出る
   await expect(page.locator('.fake-yt')).toBeVisible();
+  await expect(page.getByText('見た 動画などの 情報が YouTube（Google）の 決まりで 送られます')).toBeVisible();
   await expect(page.getByRole('button', { name: 'ここを 始まりに' })).toBeVisible();
 
   // 10秒の所から流して、始まり・終わりを決める
@@ -95,10 +97,18 @@ test('YouTube だけの曲を足し、区間を決めてくり返し、保存し
   await page.getByRole('button', { name: 'ここを 終わりに' }).click();
   await expect(page.getByText(/区間：0:1\d\.\d 〜 0:1\d\.\d/)).toBeVisible();
 
-  // くり返す：始まりへ戻して流す（偽のプレーヤーが呼ばれる）
+  // くり返す：始まりへ戻して流し、偽の時計が区間の終わりを過ぎたら、また始まりへ戻す。
+  // 押す直前に記録を空にして、押したあとの呼び出しだけを見る（前の操作の seekTo で通ってしまわないように）
+  await page.evaluate(() => { window.__ytCalls = []; });
   await page.getByRole('button', { name: '▶ 区間を くり返す' }).click();
-  await expect.poll(() => page.evaluate(() => window.__ytCalls.filter((c) => c === 'playVideo').length)).toBeGreaterThan(1);
-  await expect.poll(() => page.evaluate(() => window.__ytCalls.some((c) => c.startsWith('seekTo:1')))).toBe(true);
+  const first = await page.evaluate(() => window.__ytCalls.slice(0, 2));
+  expect(first[0]).toMatch(/^seekTo:1\d(\.\d+)?$/); // 区間の始まりへ
+  expect(first[1]).toBe('playVideo');
+  // 区間（約1.5秒）の終わりを過ぎると、同じ始まりへの seekTo がもう一度来る（くり返しの見張り）
+  await expect.poll(
+    () => page.evaluate((seek) => window.__ytCalls.slice(1).filter((c) => c === seek).length, first[0]),
+    { timeout: 6000 },
+  ).toBeGreaterThanOrEqual(1);
   await page.getByRole('button', { name: '■ 止める' }).click();
 
   // 速さ：0.5倍が選べる

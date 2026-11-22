@@ -198,7 +198,7 @@ export const VOCAL_GUIDE_TEXT = {
 
 ## 段6②（YouTube）の 文
 
-専門の目線のチェックは、このあと controller が行う（まだ 未実施）。YouTube の 画面（`src/screens/stage6Yt.js`）には、この 画面だけの 文は なく、下の `STAGE6_TEXT` の `yt*` と、段6①の 曲の 画面（`src/screens/stage6Song.js`）の `TEXT` を 同じ 文で 使い回して いる（区間の 保存・消す・上書き、イヤホンの 確認、速さ、歌う・止める、など。文は 上の「画面の文（`stage6Song.js` の `TEXT`）」に ある）。
+専門の目線のチェックは 2026-11-22 に 行い、下の「指摘と直したこと（段6②）」の 表の とおり 直した。YouTube の 画面（`src/screens/stage6Yt.js`）には、この 画面だけの 文は なく、下の `STAGE6_TEXT` の `yt*` と、段6①の 曲の 画面（`src/screens/stage6Song.js`）の `TEXT` を 同じ 文で 使い回して いる（区間の 保存・消す・上書き、イヤホンの 確認、速さ、歌う・止める、など。文は 上の「画面の文（`stage6Song.js` の `TEXT`）」に ある）。
 
 ### 画面の文（`src/data/copy.js` の `STAGE6_TEXT` の `yt*`）
 
@@ -206,14 +206,14 @@ export const VOCAL_GUIDE_TEXT = {
   ytNotEmbeddable: 'この 動画は 持ち主の 設定で、アプリの 中では 流せません',
   ytNotFound: 'この 動画は 見つかりません。アドレスを 確かめて ください',
   ytBadId: 'アドレスを 読み取れません',
-  ytNoReferer: 'この 画面から YouTube を 開けませんでした。ブラウザで 開きなおして みて ください',
+  ytNoReferer: 'この 画面からは YouTube を 開けませんでした。この アプリを Safari などの ブラウザで 開きなおして みて ください',
   ytOther: 'YouTube を 再生できませんでした',
   ytOffline: '電波が ない ときは YouTube は 使えません。買った 曲の ファイルは 電波なしで 使えます',
-  ytEarphone: '曲に 合わせて 歌う ときは、イヤホンが 必要です',
   ytButton: 'YouTube',
   ytLabel: 'YouTube の アドレス（あとからでも 足せます）',
   ytSave: '保存',
-  ytNotice: 'YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません',
+  ytNotice: 'YouTube で 練習する ときは、YouTube の 公式の プレーヤーを 読み込みます。このとき YouTube に つながり、見た 動画などの 情報が YouTube（Google）の 決まりで 送られます。マイクの 声は スマホの 外に 出ません。曲の ダウンロードや 録音は しません',
+  ytRights: 'YouTube の 動画は、アプリの 中の YouTube の プレーヤーで 流すだけです。動画から 曲を 取り出したり、録音したり しないで ください。歌手や レコード会社の 公式の 動画を 選ぶと 安心です',
   ytPractice: 'YouTube で 練習',
   ytLoading: 'YouTube を 読み込んで います…',
   ytPlay: '▶ 再生',
@@ -222,25 +222,43 @@ export const VOCAL_GUIDE_TEXT = {
   ytLoop: '▶ 区間を くり返す',
   ytRange: (from, to) => `区間：${from} 〜 ${to}`,
   ytPickFirst: '先に 「ここを 始まりに」「ここを 終わりに」で 区間を 選んで ください',
-  ytBadRange: '終わりは 始まりより 0.5秒 より 後ろに して ください',
-  ytSteady: 'ゆれの 目安：まっすぐ',
-  ytSome: 'ゆれの 目安：ときどき ゆれる',
-  ytWobbly: 'ゆれの 目安：よく ゆれる',
-  ytWobbleNote: '声の 高さの ゆれ方の 目安で、うまい・へたの 点数ではありません',
+  ytBadRange: '終わりは、始まりから 0.5秒 より あとに して ください',
+  ytFew: 'ゆれの 目安：少なめ',
+  ytNormal: 'ゆれの 目安：ふつう',
+  ytMany: 'ゆれの 目安：多め',
+  ytWobbleNote: '声の 高さの ゆれ方の 目安です。うまい・へたの 点数では ありません',
+  ytWobbleKinds: 'ビブラートや 音の 変わり目も ふくまれます。どれが よい・わるいと いう ものでは ありません',
   ytNoVoice: '声が 聞こえませんでした。もう一度 ためして みましょう',
-  ytOutside: (above, below) => `声の 地図の 外：上に ${above}回・下に ${below}回`,
+  ytOutsideAbove: '声の 地図より 高い 所が ありました（目安）',
+  ytOutsideBelow: '声の 地図より 低い 所が ありました（目安）',
   ytToSong: 'お手本の 線で 練習する',
-  ytPausedTake: '一時停止したので、今回は 記録しません',
-  ytNotStarted: '再生が 始まりませんでした。もう一度 ためして ください',
-  ytStalledTake: '再生が 止まったので、今回は 記録しません',
+  ytPausedTake: '途中で 止まったので、今回は 記録しません。もう一度 歌う ときは 「● 歌う」を 押して ください',
+  ytNotStarted: '再生が 始まりませんでした。動画の ▶ を 一度 押してから、もう一度 「● 歌う」を 押して みて ください',
+  ytStalledTake: '再生が 止まったので、今回は 記録しません。電波が 弱い ことが あります。少し 待ってから、もう一度 「● 歌う」を 押して ください',
 ```
 
 ### 画面の文（`src/screens/stage6Yt.js` の 中の 表示）
 
 - 位置の 表示：「1:23 / 3:45」（分:秒）。区間の 端：「区間：0:10.5 〜 0:15.0」（`ytRange`）。端が 未決定の ときは「－」
-- 歌ったあとの「ゆれの 目安」は `ytSteady`・`ytSome`・`ytWobbly`・`ytWobbleNote`、声が 無い ときは `ytNoVoice`、地図の 外は `ytOutside`。点数・合格・失敗の 言葉は 使って いない
+- 練習の 画面の 上：`ytNotice`（YouTube に 何が 送られるか）と `earphone`（段6①と 同じ。音量の 注意つき）。そのあと プレーヤーの 枠
+- 歌う 前の イヤホンの 確認：`TEXT.earphone`・`TEXT.earphoneWhy`・`TEXT.volume` と `SAFETY_LINES` の 1・2つ目
+- 歌ったあとの「ゆれの 目安」は `ytFew`・`ytNormal`・`ytMany`・`ytWobbleNote`・`ytWobbleKinds`、声が 無い ときは `ytNoVoice`、地図の 外は `ytOutsideAbove`（と `TEXT.overCare`）・`ytOutsideBelow`（数は 出さない）。ボタンの 前に `highCare` と `SAFETY_LINES` の 1・2つ目。点数・合格・失敗の 言葉は 使って いない
+- 曲を 足す 画面（`stage6List.js` の `showForm`・`showYtForm`）：アドレスの 欄の 下に `ytRights`、その 下に `ytNotice`
 
 ### 指摘と直したこと（段6②）
 
+チェック日：2026-11-22。目線：ボイストレーナー・言語聴覚士・日本の消費者向けの表示と個人情報の扱い。
+見た所：`copy.js` の `STAGE6_TEXT`（`yt*`・`earphone`・`rights`・`highCare`）、`stage6Yt.js`（`showControls`・`askEarphone`・`showTakeResult`・`stallText`）、`stage6Song.js` の `TEXT`、`stage6List.js`（`ytNotice` を 出す 所）、`record.js`（`stage6Lines`）、`stability.js`、`ytPlayer.js`（埋め込みの 場所）。
+確かめた事実：iframe は `www.youtube-nocookie.com` から 出すが、IFrame API の スクリプトは `www.youtube.com/iframe_api` から 読む。マイクの 読みは `requestAnimationFrame` ごと（1秒に 約60回）。`record.js` の YouTube の 行（「好きな 曲：○○（YouTube）　○回 練習」）は 回数だけで、責める 言葉・連続日数・点数は なく、問題なし。
+
 | 指摘 | 直したこと |
 |---|---|
+| 【要修正】`stage6Yt.js`（`showTakeResult`）と `copy.js`（`ytOutside`）：「上に ${above}回・下に ${below}回」の 数は、マイクの 読み（1秒に 約60回）の 数で、歌った 音の 数では ない。高い 所を 1秒 歌うだけで「上に 60回」と 出て、初心者は「何十回も 外れた」と おどろき、責められた ように 感じやすい。また `TEXT.overCare`（高い 所は 無理に のばさないで）は、下に だけ 出た ときにも 出る。→ 数は 出さず、ある・ないだけに する：`ytOutsideAbove: '声の 地図より 高い 所が ありました（目安）。高い 所は 無理に のばさないで ください'`、`ytOutsideBelow: '声の 地図より 低い 所が ありました（目安）。低い 所も 無理に 下げなくて 大丈夫です'`。上と 下で 出しわけ、`overCare` は 上に 出た ときだけに する。 | 数は 出さない ように した。`ytOutside` を やめ、`ytOutsideAbove: '声の 地図より 高い 所が ありました（目安）'`・`ytOutsideBelow: '声の 地図より 低い 所が ありました（目安）'` を 上・下 べつべつに 出す（controller の 決め R-B：文は 数なし・「（目安）」つき、下の 側の 一言は 足さない）。`TEXT.overCare`（高い 所は 無理に のばさないで ください）は 上に 出た ときだけ。ちょっと とんだ 読みで 出ない よう、合わせて `outsideMinMs`（200ms）以上 外に 出た ときだけ 出す（`stability.js` の `outsideFlags`。読み 1つの 時間は 読みの 間の 中央値で 測るので、1秒に 約60回でも 50回でも 同じ 長さで 決まる）。テスト：`tests/logic/stability.test.js` の「outsideFlags」4つ、`tests/ui/stage6Yt.test.js` の「65 を 300ms（15コマ）→ 数は出さず…」「下に だけ 長く出た…」「地図の外が ほんの少し…」 |
+| 【要修正】`stability.js`（`stabilityOf`）と `copy.js`（`ytSteady`・`ytSome`・`ytWobbly`・`ytWobbleNote`）：ゆれは「声が とぎれずに 続く まとまり」ごとの 中央値からの ずれで 測って いる。曲では 音から 音へ 声を とぎらせずに 移る（レガート）ことが ふつうで、メロディの 上下が そのまま「ゆれ」に 入る（2半音 動くだけで 約100セント。`wobblyCents` は 50）。ビブラートも「ゆれ」に 入る。ちゃんと 歌えて いても「よく ゆれる」に なりやすく、まちがった 印象を 与える（ボイストレーナー・言語聴覚士の 目線）。「まっすぐ」が よい 答えに 見え、ゆれが 悪い ことの ように 読める。→ 計算は、音の 切りかわり（たとえば 前の 読みから 1半音 以上 とんだ 所）で まとまりを 区切ってから 測る ように 直す（直せない あいだは 結果の 文を 出さない）。文は：`ytSteady: 'ゆれの 目安：少なめ'`、`ytSome: 'ゆれの 目安：ふつう'`、`ytWobbly: 'ゆれの 目安：多め'`、`ytWobbleNote: '声の 高さの ゆれ方の 目安です。うまい・へたの 点数では ありません。ビブラートや、音から 音へ 移る ところでも ゆれが 多めに 出ます。どれが よい・わるい では ありません'`。 | 計算を 直した（controller の 決め R-A）。`stabilityOf` は、声の 連続を 音ごとの「平ら」に 区切ってから 測る：平らの 中央値から 100セント（1半音）以上、または すぐ前の 読みから 60セント 以上 とんだ 読みが、3読み 続いたら 新しい 音。続かない とんだ 読みは、近ければ 元の 平らに 戻し、遠ければ 捨てる（1つだけ とんだ 読みで 区切らず、ゆれも ふやさない）。そのうえで、大きな ビブラートの 山・谷が 細切れに ならない よう、100ms 未満の 平らを はさんで 元の 高さに 戻る ときは つなぎ直す。速い 曲で 400ms 以上の 音が 無い ときも、声が あれば「声が 聞こえませんでした」には しない（150ms 以上の 音、それも 無ければ 声の 連続で 測る）。数字は `CONFIG.stage6.yt`（`noteJumpCents`・`stepJumpCents`・`holdReadings`・`wobbleMs`。`stableCents` 25・`wobblyCents` 50 は そのまま）。ラベルは `few`・`normal`・`many`、文は `ytFew: 'ゆれの 目安：少なめ'`・`ytNormal: 'ゆれの 目安：ふつう'`・`ytMany: 'ゆれの 目安：多め'`、`ytWobbleNote: '声の 高さの ゆれ方の 目安です。うまい・へたの 点数では ありません'` と `ytWobbleKinds: 'ビブラートや 音の 変わり目も ふくまれます。どれが よい・わるいと いう ものでは ありません'`（controller の 決めの 文）。テスト：`stability.test.js` の「音の変わり目で区切る」（57・59・60 を すきま無し → few、±30セントの ビブラート → many に ならない、±70セント ふらつく → many、1つ・2つ とんだ 読み、±80セントの 大きな ビブラート、速い 曲、120ms の 短い 音、300ms の すべり）、`stage6Yt.test.js` の「3つの音を 声を とぎらせずに 歌う…」。実機での 見え方は 確かめ表の 48 |
+| 【要修正】`copy.js`（`ytNotice`）と `stage6Yt.js`（`load`）：(1) 文の 中身は うそでは ない（声は 外に 出ない・ダウンロードしない は 実装と 合う）。ただ「YouTube に 接続します」だけだと、何が 送られるかが 分からず、すぐ あとの「声は スマホの 外に 出ません」で「何も 外に 出ない」と 読まれやすい。実際は、YouTube（Google）の スクリプトと プレーヤーが 動き、見た 動画や 端末の 情報が YouTube に 送られる（youtube-nocookie.com でも、スクリプトは www.youtube.com から 読み、記録が まったく ない わけでは ない）。「クッキーなし」「追跡なし」とは 書かない。(2) この 文は 曲を 足す 画面（`stage6List.js`）だけに 出て、実際に YouTube に つながる 練習の 画面には「YouTube」の 一語（`T.ytButton`）しか ない。→ `ytNotice: 'YouTube で 練習する ときは、YouTube の 公式の プレーヤーを 読み込みます。このとき YouTube に つながり、見た 動画などの 情報が YouTube（Google）の 決まりで 送られます。マイクの 声は スマホの 外に 出ません。曲の ダウンロードや 録音は しません'`。練習の 画面の `note(T.ytButton)` を `note(T.ytNotice)` に かえる。 | 表の 文の とおりに `ytNotice` を 書きなおした（「クッキーなし」「追跡なし」とは 書かない）。練習の 画面（`stage6Yt.js` の `load`）の `note(T.ytButton)` を `note(T.ytNotice)` に かえ、プレーヤーの 枠より 前に 出す。曲を 足す 画面にも そのまま 出る。テスト：`stage6Yt.test.js` の「曲名・YouTube に つながる お知らせ…」、`stage6List.test.js` の 2つ（「クッキー」「追跡」の 言葉が 無い ことも 確かめる）、`e2e/stage6Yt.spec.js` |
+| 【要修正】`stage6List.js`（`showForm`）と `copy.js`（`rights`）：曲を 足す 画面の `rights`（自分で 買った 曲や CD から 取り込んだ 曲を 使って ください）の すぐ 下に、YouTube の アドレスの 欄が あり、YouTube だけでも 曲を 足せる。「YouTube の 曲も 買わないと だめ？」「YouTube から ファイルに すれば よい？」と 読まれる おそれが ある。YouTube から 取り出さない・録音しない の 一言が、YouTube の 画面にも 足す 画面にも ない（案内 `vocalGuide.json` の `cautions[1]` は、案内を 開く 人にしか 見えない）。→ `STAGE6_TEXT` に `ytRights: 'YouTube の 動画は、アプリの 中の YouTube の プレーヤーで 流すだけです。動画から 曲を 取り出したり、録音したり しないで ください。歌手や レコード会社の 公式の 動画を 選ぶと 安心です'` を 足し、アドレスの 欄の 下（`ytNotice` の 前）と、`showYtForm` に 出す。 | 表の 文の とおりに `ytRights` を 足し、`showForm` と `showYtForm` の アドレスの 欄の すぐ 下（`ytNotice` の 前）に 出す。テスト：`stage6List.test.js` の「追加画面：YouTube の入力欄の下に ytRights と ytNotice…」「既存の曲に YouTube を足す画面にも…」（並び順も 確かめる）、`e2e/stage6Yt.spec.js` |
+| 【推奨】`stage6Yt.js`（`load`）と `copy.js`（`ytEarphone`）：練習の 画面の 上の `ytEarphone` には、段6① で 足した 音量の 注意が ない（`STAGE6_TEXT.earphone` は 直って いる）。区間を くり返し 聞く だけの ときも、イヤホンで 大きな 音を 長く 聞く ことに なる。歌う 前の 確認（`askEarphone`）には `TEXT.volume` が 出るので、流れの 中には ある。→ `ytEarphone` を やめ、`note(T.earphone)` を 出す（文を 1つに そろえる）。 | `ytEarphone` を 消し、練習の 画面の 上は `note(T.earphone)`（音量の 注意つき。段6①と 同じ 文）に した。テスト：`stage6Yt.test.js` の「曲名・YouTube に つながる お知らせ・イヤホンと音量の注意…」、`ytPlayer.test.js` の 文の 一覧 |
+| 【推奨】`stage6Yt.js`（`showControls`・`askEarphone`・`showTakeResult`）：苦しい・痛い ときは やめる（`SAFETY_LINES` の 1〜3つ目）と `highCare` は あるが、ボタンの 並びの いちばん 下で、スマホでは 見えない ことが 多い。歌う 直前の イヤホンの 確認と、歌った あとの 結果の 画面には ない。曲を くり返し 歌う 画面なので、のどを 使いすぎやすい。→ `askEarphone` の `TEXT.volume` の あとに `note(SAFETY_LINES[0])`（苦しい・痛いと 感じたら、すぐ やめましょう。）を 足す。`showTakeResult` の ボタンの 前に `note(T.highCare)` を 足す。 | 歌う 前の 確認（`askEarphone`）の `TEXT.volume` の あとに、`SAFETY_LINES` の 1・2つ目（苦しい・痛い ときは やめる／声がれが 続く ときは 耳鼻咽喉科）を 出す（controller の 決め R-C：痛みと 耳鼻咽喉科の 2つを 両方の 画面に）。結果の 画面（`showTakeResult`）の ボタンの 前に `note(T.highCare)` と 同じ 2つを 出す。テスト：`stage6Yt.test.js` の「● 歌う → イヤホンの確認…」「同じ高さを流す → 少なめ…安全の一言も出る」（ボタンより 前に ある ことも 確かめる） |
+| 【推奨】`copy.js`（`ytPausedTake`・`ytStalledTake`・`ytNotStarted`）：責める 言葉は なく、「記録しません」も 落ち着いた 言い方で よい。ただ、次に どう すれば よいかが ない。「一時停止したので」は、自分で 止めて いない とき（電話・通知・YouTube 側の 止まり）にも 出る ことが あり、自分の せいと 読まれやすい。→ `ytPausedTake: '途中で 止まったので、今回は 記録しません。もう一度 歌う ときは 「● 歌う」を 押して ください'`、`ytStalledTake: '再生が 止まったので、今回は 記録しません。電波が 弱い ことが あります。少し 待ってから、もう一度 「● 歌う」を 押して ください'`、`ytNotStarted: '再生が 始まりませんでした。動画の ▶ を 一度 押してから、もう一度 「● 歌う」を 押して みて ください'`（▶ を 押すと 流れる ように なるか は、iPhone で 確かめてから 入れる）。 | 表の 文の とおりに 3つを 直した。`ytNotStarted` の「動画の ▶ を 一度 押してから」も 入れた（controller の 決め R-C：役に 立つので 入れ、iPhone で 確かめる 行を 確かめ表の 47 に 足した）。テスト：`stage6Yt.test.js` の「歌う途中で一時停止（paused）…」（「一時停止したので」が 出ない ことも）「位置が届く前に一時停止された…」「いつまでも再生が始まらない…」「止まったまま（buffering など）…」 |
+| 【推奨】`copy.js`（`ytNoReferer`）：「ブラウザで 開きなおして」は、ホーム画面に 置いた アプリの 人には、何を 開くのか 分かりにくい（YouTube の サイトを 開いて しまう おそれも ある）。→ `ytNoReferer: 'この 画面からは YouTube を 開けませんでした。この アプリを Safari などの ブラウザで 開きなおして みて ください'` | 表の 文の とおりに 直した。テスト：`stage6Yt.test.js` の「YtPlayerError(153)（参照元が無い）→ アプリを Safari などで 開きなおす 案内」。確かめ表の 46 に 参照元と エラー 153 の 行を 足した |
+| 【推奨】`copy.js`（`ytBadRange`）：「始まりより 0.5秒 より 後ろに」は「より」が 2回で 読みにくい。→ `ytBadRange: '終わりは、始まりから 0.5秒 より あとに して ください'` | 表の 文の とおりに 直した。テスト：`stage6Yt.test.js` の「終わりが始まりより前なら保存できず案内する」 |
