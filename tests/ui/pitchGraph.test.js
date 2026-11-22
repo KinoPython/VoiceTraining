@@ -130,4 +130,27 @@ describe('createPitchGraph', () => {
     expect(fills).toContain('#abcdef');
     document.documentElement.style.removeProperty('--band-over');
   });
+  it('setRangeLines：low・high を渡すと --muted の破線が2本、null なら引かない', () => {
+    const styles = [];
+    const calls = [];
+    const ctx = new Proxy({}, {
+      get: (_, n) => (...a) => calls.push([n, ...a]),
+      set: (_, n, v) => { if (n === 'strokeStyle') styles.push(v); return true; },
+    });
+    const canvas = document.createElement('canvas');
+    canvas.getContext = () => ctx;
+    document.documentElement.style.setProperty('--muted', '#654321');
+    const g = createPitchGraph(canvas, { minMidi: 48, maxMidi: 72, windowMs: 1000 });
+    const dashed = () => calls.filter((c) => c[0] === 'setLineDash' && c[1].length > 0).length;
+    g.setRangeLines(50, 60);
+    expect(dashed()).toBe(2);
+    expect(styles).toContain('#654321');
+    calls.length = 0;
+    g.setRangeLines(null, null);
+    expect(dashed()).toBe(0);
+    calls.length = 0;
+    g.push(100, 60); // 引かないときも、ふつうに描ける
+    expect(dashed()).toBe(0);
+    document.documentElement.style.removeProperty('--muted');
+  });
 });

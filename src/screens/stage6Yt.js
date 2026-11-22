@@ -1,11 +1,18 @@
-// 段6② YouTube で練習：公式の埋め込みプレーヤーで流し、区間をくり返し聞く（歌うのは次の手順で足す）
-// 曲はダウンロードしない。YouTube に つながるのは、この画面のプレーヤーだけ
+// 段6② YouTube で練習：公式の埋め込みプレーヤーで流し、区間をくり返し聞く・合わせて歌う
+// 曲はダウンロードしない。YouTube に つながるのは、この画面のプレーヤーだけ。
+// 歌う声はスマホの中で高さの数字にするだけ（録った声は残さない。保存するのは高さの数字の並びだけ）
 import { go } from '../router.js';
 import { button, heading, note, safetyList } from '../ui/components.js';
+import { createPitchGraph } from '../ui/pitchGraph.js';
+import { createMicSession } from '../ui/practiceLoop.js';
+import { openMic } from '../audio/mic.js';
 import { loadYouTubeApi, createYtPlayer, ytErrorKey } from '../audio/ytPlayer.js';
-import { loopAction } from '../logic/ytClock.js';
-import { getSong, saveSection, removeSection, newId } from '../storage/store.js';
+import { createSongClock, loopAction } from '../logic/ytClock.js';
+import { stabilityOf, outsideRange } from '../logic/stability.js';
+import { lineToGhost } from '../logic/songScore.js';
+import { loadState, getSong, saveSection, removeSection, addHistory, newId } from '../storage/store.js';
 import { CONFIG } from '../logic/config.js';
+import { todayString } from '../logic/today.js';
 import { STAGE6_TEXT as T, SAFETY_LINES } from '../data/copy.js';
 import { TEXT, RATE_LABEL, nextSectionName } from './stage6Song.js';
 
@@ -14,11 +21,18 @@ const defaultDeps = {
   createYtPlayer,
   setInterval: (fn, ms) => window.setInterval(fn, ms),
   clearInterval: (id) => window.clearInterval(id),
-  now: () => performance.now(), // 次の手順（歌う）で、再生位置の時計に使う
+  now: () => performance.now(), // 歌うときの、再生位置の時計に使う
   confirm: (text) => window.confirm(text),
+  openMic,
 };
 
 const WHICH = 'ytSections'; // YouTube の区間は、曲ファイルの区間とは別に持つ（時間の基準がちがうことがあるため）
+
+const noop = () => {};
+const DEFAULT_WINDOW_MS = 6000; // 線グラフのふつうの窓（pitchGraph.js と同じ）
+const sectionMsOf = (section) => (section.endSec - section.startSec) * 1000;
+// ゆれの目安 → 結果の文（'none' は別の文にする。声が無いのに「まっすぐ」と言わないため）
+const WOBBLE_TEXT = { steady: T.ytSteady, some: T.ytSome, wobbly: T.ytWobbly };
 
 // エラー番号の種類 → 案内の文
 const PLAYER_ERROR_TEXT = {
@@ -50,6 +64,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   const d = { ...defaultDeps, ...deps };
   const songId = params?.get?.('id') ?? null;
   const song = getSong(songId);
+  const range = loadState().range; // 声の地図。無ければ地図の線・地図の外の数は出さない
   const abort = new AbortController(); // 画面を離れたら、読み込みの待ちもやめる
   let player = null;
   let pollId = null; // 再生中の確かめのタイマー
@@ -62,6 +77,10 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   let message = null;
   let position = null;
   let disposed = false;
+  let lastState = null; // プレーヤーの最後の状態（'playing' など）。歌うときの時計に使う
+  let take = null; // 歌っている1回分 { section, previous, readings, graph, canvas, clock, mic }。歌っていなければ null
+  let tries = 0; // 歌い終えて、声が聞こえた回の数
+  let historySaved = false;
 
   const title = () => heading(song ? song.title : T.title);
   const setMessage = (text) => { if (message) message.textContent = text; };
@@ -73,6 +92,21 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     && s.startSec >= 0 && s.endSec <= durationSec() && s.startSec < s.endSec - CONFIG.stage6.nudgeSec;
 
   // ---------- 片づけ ----------
+  // 歌っている途中の回をやめる（数えない）。マイクはまた開けるように release で閉じる
+  function abandonTake() {
+    if (!take) return;
+    take.mic.onFrame(noop);
+    take = null;
+    session.release();
+  }
+
+  // 今日の分を記録する（二重に書かない）。歌い終えた回が 0 なら残さない
+  function saveHistory() {
+    if (historySaved || tries === 0) return;
+    historySaved = true;
+    addHistory({ date: todayString(), stage: 6, tries, successes: 0, value: null, songTitle: song.title, kind: 'yt' });
+  }
+
   function stopPoll() {
     if (pollId !== null) d.clearInterval(pollId);
     pollId = null;
@@ -81,6 +115,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
 
   // 二重に呼ばれても1回だけ destroy する
   function destroyPlayer() {
+    abandonTake();
     stopPoll();
     const p = player;
     player = null;
@@ -116,7 +151,9 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
 
   // YouTube の画面の中のボタンで流したときも、位置の表示を進める（くり返し中ならそのまま）
   function onPlayerState(name) {
+    lastState = name;
     if (disposed || !player) return;
+    if (take) return onSingState(name); // 歌っている間は、歌う側のタイマーにまかせる
     if (name === 'playing' && pollId === null) startPoll(false);
     if (name === 'ended' && looping && isValid(selection)) return restartLoop();
     // くり返していないときは、止まっている間タイマーを止める（playing でまた動かす）
@@ -319,15 +356,148 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
       note(T.ytRange(edgeText(selection?.startSec ?? null), edgeText(selection?.endSec ?? null))),
       nudgeButtons(), sectionButtons(), button(TEXT.saveSection, saveCurrent), ...actionItems(), message,
     ];
-    if (isValid(selection)) items.push(button(T.ytLoop, startLoop)); // 区間が決まったら出す
-    items.push(rateRow(), note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.toList, () => go('stage6')));
+    if (isValid(selection)) items.push(button(T.ytLoop, startLoop), button(TEXT.sing, askEarphone)); // 区間が決まったら出す
+    items.push(rateRow());
+    // 曲のファイルもある曲は、お手本の線のある練習の画面へ行ける
+    if (song.hasFile || song.hasVocal) items.push(button(T.ytToSong, () => go('song', { id: songId })));
+    items.push(note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.toList, () => go('stage6')));
     controls.replaceChildren(...items);
+  }
+
+  // ---------- 歌う ----------
+  // マイクは歌うときだけ開き、歌い終わったら閉じる（開いたままだと、YouTube の音が小さくなることがあるため）
+  const session = createMicSession({
+    openMic: (...args) => d.openMic(...args),
+    root,
+    onReady: (mic) => startSinging(mic),
+    onHidden: showStopped,
+  });
+
+  // イヤホンが無いとマイクが曲を拾うので、毎回たずねる。「つけた」まで始めない（文は段6①と同じ）
+  function askEarphone() {
+    if (!player) return;
+    if (!isValid(selection)) return setMessage(rangeProblem());
+    stop();
+    message = null;
+    controls.replaceChildren(
+      note(TEXT.earphone), note(TEXT.earphoneWhy), note(TEXT.volume),
+      button(TEXT.wearing, () => (session.mic ? startSinging(session.mic) : session.open())),
+      button(TEXT.cancel, () => showControls('')),
+    );
+  }
+
+  // 線グラフの上下の範囲。声の地図（無ければふつうの範囲）から少し余白をとる
+  function graphRange() {
+    const r = range ?? CONFIG.defaultRange;
+    return { minMidi: r.low - 4, maxMidi: r.high + 4 };
+  }
+
+  function startSinging(mic) {
+    // マイクが開くのを待つ間に、離れた・エラーになった・区間が消えたときは歌わない
+    if (disposed || !player || !isValid(selection)) return session.release();
+    stopPoll();
+    const section = { ...selection };
+    const previous = section.dirty ? null : savedSection(section.sectionId); // 範囲を動かしたあとは前回の線と合わない
+    const canvas = document.createElement('canvas');
+    // 長い区間でも、歌い終わったとき区間ぜんぶ（前奏から）と前回の線が見えるよう、窓を区間の長さに合わせる
+    const windowMs = Math.max(DEFAULT_WINDOW_MS, sectionMsOf(section) + CONFIG.stage6.leadInSec * 1000);
+    const graph = createPitchGraph(canvas, { ...graphRange(), windowMs });
+    graph.setRangeLines(range?.low ?? null, range?.high ?? null);
+    if (previous?.lastLine) graph.setGhost(previous.lastLine); // 前回の自分の線を薄く重ねる
+    message = null;
+    controls.replaceChildren(note(TEXT.singing), canvas, button(TEXT.stop, cancelTake));
+    take = { section, previous, readings: [], graph, canvas, clock: createSongClock(), mic };
+    mic.onFrame((midi) => onSingFrame(midi));
+    // 区間の少し前から1回だけ流す
+    player.seekTo(Math.max(0, section.startSec - CONFIG.stage6.leadInSec));
+    player.play();
+    pollId = d.setInterval(singTick, CONFIG.stage6.yt.pollMs);
+  }
+
+  // pollMs ごとに再生位置を読んで時計を合わせ、区間の終わりに来たら止める（1回だけ流す）
+  function singTick() {
+    if (!take || !player) return;
+    const nowMs = d.now();
+    take.clock.update(player.currentSec(), nowMs, lastState === 'playing', rate);
+    const { startSec, endSec } = take.section;
+    if (loopAction(take.clock.estimate(nowMs), startSec, endSec, false) === 'stop') endTake();
+  }
+
+  // 歌っている間のプレーヤーの状態。止まった（paused）ときは時計が止まるだけ。
+  // 区間の終わりが動画の終わりと同じだと、位置が少し手前のまま ended になるので、そこで終える
+  function onSingState(name) {
+    if (name === 'ended') endTake();
+  }
+
+  // マイクの1コマ。時刻は曲の位置（区間の始まりから ms）で測る。ゆっくり流しても前回の線と同じ目盛りになる。
+  // 声はマイクの遅れのぶん遅れて届くので、その分を引く（遅れは本当の時間なので、曲の位置では速さをかける）
+  function onSingFrame(midi) {
+    if (!take) return;
+    const songSec = take.clock.estimate(d.now());
+    const t = (songSec - take.section.startSec) * 1000 - CONFIG.stage6.latencyMs * rate;
+    if (t < 0) return take.graph.push(t, null); // 前奏の間は数えない（グラフの時計だけ進める）
+    if (t > sectionMsOf(take.section)) return;
+    take.readings.push({ t, midi });
+    take.graph.push(t, midi);
+  }
+
+  // 途中でやめる（「止める」）：数えずに、区間の画面へ戻る
+  function cancelTake() {
+    abandonTake();
+    stopPoll();
+    player?.pause();
+    showControls('');
+  }
+
+  // 区間の終わりまで歌えたとき：止めて、マイクを閉じて、結果を出す
+  function endTake() {
+    const run = take;
+    if (!run) return;
+    abandonTake();
+    stopPoll();
+    player?.pause();
+    run.graph.push(sectionMsOf(run.section), null); // 時計を区間の終わりまで進め、区間ぜんぶを窓に入れる
+    const wobble = stabilityOf(run.readings);
+    const kept = recordTake(wobble, run);
+    showTakeResult(wobble, outsideRange(run.readings, range), run, kept);
+  }
+
+  // 声が聞こえた回だけ数え、保存した区間なら今回の線を残す（声そのものは残さない）。
+  // 合いぐあいの数字は YouTube では出さないので、lastRatio は null のまま。残せなかったら false
+  function recordTake(wobble, { previous, readings }) {
+    if (wobble.label === 'none') return true; // 声が無い回は数えず、前回の線も書きかえない
+    tries += 1;
+    if (!previous) return true;
+    return saveSection(songId, { ...previous, lastLine: lineToGhost(readings), lastRatio: null }, WHICH).ok;
+  }
+
+  function showTakeResult(wobble, outside, { canvas }, kept) {
+    const items = [canvas];
+    if (wobble.label === 'none') items.push(note(T.ytNoVoice));
+    else items.push(note(WOBBLE_TEXT[wobble.label]), note(T.ytWobbleNote));
+    if (outside.above + outside.below > 0) items.push(note(T.ytOutside(outside.above, outside.below)), note(TEXT.overCare));
+    if (!kept) items.push(note(T.saveFailedOther));
+    items.push(button(TEXT.again, askEarphone), button(TEXT.back, () => showControls('')), button(TEXT.finish, () => go('stage6')));
+    message = null;
+    controls.replaceChildren(...items);
+  }
+
+  // アプリを隠してマイクが止まったとき：途中の回は数えず、プレーヤーも止める
+  function showStopped() {
+    take?.mic.onFrame(noop);
+    take = null;
+    stopPoll();
+    player?.pause();
+    message = null;
+    controls.replaceChildren(note(TEXT.stopped), button(TEXT.again, askEarphone), button(TEXT.back, () => showControls('')));
   }
 
   load();
   return () => {
     disposed = true;
     abort.abort();
-    destroyPlayer();
+    destroyPlayer(); // 歌っている途中の回もここでやめる（数えない）
+    session.close();
+    saveHistory();
   };
 }

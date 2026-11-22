@@ -74,4 +74,11 @@ export const STAGE6_TEXT = {
   ytRange: (from, to) => `区間：${from} 〜 ${to}`,
   ytPickFirst: '先に 「ここを 始まりに」「ここを 終わりに」で 区間を 選んで ください',
   ytBadRange: '終わりは 始まりより 0.5秒 より 後ろに して ください',
+  ytSteady: 'ゆれの 目安：まっすぐ',
+  ytSome: 'ゆれの 目安：ときどき ゆれる',
+  ytWobbly: 'ゆれの 目安：よく ゆれる',
+  ytWobbleNote: '声の 高さの ゆれ方の 目安で、うまい・へたの 点数ではありません',
+  ytNoVoice: '声が 聞こえませんでした。もう一度 ためして みましょう',
+  ytOutside: (above, below) => `声の 地図の 外：上に ${above}回・下に ${below}回`,
+  ytToSong: 'お手本の 線で 練習する',
 };

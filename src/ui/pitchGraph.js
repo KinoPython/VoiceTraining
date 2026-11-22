@@ -43,6 +43,7 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
   let bands = [];
   let ghost = null; // 前回の声の線（薄く描く）。{ t, midi }[] か null
   let ok = false;
+  let rangeLines = null; // 声の地図の上下の端 { low, high }。null なら引かない
   let nowMs = 0;
   // 大きさを CSS で固定するための印（styles.css の canvas.pitch-graph）
   canvas.classList.add('pitch-graph');
@@ -110,6 +111,22 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
     ctx.globalAlpha = 1;
   }
 
+  // 声の地図の上下の端を点線で引く（地図の外に出たかを見て分かるように。帯や声の線より目立たせない）
+  function drawRangeLines(ctx, colors, width, height) {
+    if (!rangeLines) return;
+    ctx.strokeStyle = colors.muted;
+    ctx.lineWidth = 1;
+    for (const midi of [rangeLines.low, rangeLines.high]) {
+      const y = midiToY(midi, minMidi, maxMidi, height);
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]); // 声の線は実線に戻す
+  }
+
   function draw() {
     const ctx = canvas.getContext && canvas.getContext('2d');
     if (!ctx) return; // jsdom など描けない環境では何もしない
@@ -118,6 +135,7 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
     ctx.clearRect(0, 0, width, height);
     drawBands(ctx, colors, width, height);
     drawScale(ctx, colors, width, height);
+    drawRangeLines(ctx, colors, width, height);
     drawGhost(ctx, colors, width, height);
     drawLine(ctx, points, colors.voice, width, height);
   }
@@ -142,6 +160,11 @@ export function createPitchGraph(canvas, { minMidi, maxMidi, windowMs = 6000 }) 
     // 前回の線（push と同じ時間軸）。null で消す
     setGhost(next) {
       ghost = next;
+      draw();
+    },
+    // 声の地図の上下の端（midi）。どちらかが null なら引かない
+    setRangeLines(low, high) {
+      rangeLines = low == null || high == null ? null : { low, high };
       draw();
     },
     // 声の線だけ消す（帯は setBands で入れ替える）

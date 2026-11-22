@@ -1,8 +1,26 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+
+// 線グラフの作り方・前回の線・声の地図の線を記録する（中身は本物のまま）
+const graphLog = vi.hoisted(() => ({ options: [], ghosts: [], rangeLines: [] }));
+vi.mock('../../src/ui/pitchGraph.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    createPitchGraph: (canvas, options) => {
+      graphLog.options.push(options);
+      const g = actual.createPitchGraph(canvas, options);
+      return {
+        ...g,
+        setGhost: (line) => { graphLog.ghosts.push(line); g.setGhost(line); },
+        setRangeLines: (low, high) => { graphLog.rangeLines.push([low, high]); g.setRangeLines(low, high); },
+      };
+    },
+  };
+});
 import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage6Yt } from '../../src/screens/stage6Yt.js';
 import { findBanned } from '../../src/logic/words.js';
-import { addSong, getSong } from '../../src/storage/store.js';
+import { addSong, getSong, loadState, saveRange } from '../../src/storage/store.js';
 import { CONFIG } from '../../src/logic/config.js';
 import { STAGE6_TEXT } from '../../src/data/copy.js';
 
@@ -46,19 +64,39 @@ function makeTimers() {
   };
 }
 
+// 偽のマイク：emit(midi) で1コマ流す。hide() は「アプリを隠して止まった」
+function makeMic() {
+  let frame = null;
+  let closed = null;
+  return {
+    onFrame: (cb) => { frame = cb; },
+    onClosed: (cb) => { closed = cb; },
+    close: vi.fn(),
+    emit: (midi) => frame?.(midi, 0),
+    hide: () => closed?.('hidden'),
+  };
+}
+
 let player;
 let timers;
 let playerOpts;
+let mic;
+let openMic;
+let nowMs; // 偽の時計（ms）
 function makeDeps(patch = {}) {
   player = makePlayer();
   timers = makeTimers();
   playerOpts = null;
+  mic = makeMic();
+  openMic = vi.fn(async () => ({ ok: true, mic }));
+  nowMs = 0;
   return {
     loadYouTubeApi: vi.fn(async () => ({ Player: function FakePlayer() {} })),
     createYtPlayer: vi.fn(async (container, opts) => { playerOpts = opts; return player; }),
     setInterval: timers.setInterval,
     clearInterval: timers.clearInterval,
-    now: () => 0,
+    now: () => nowMs,
+    openMic,
     confirm: vi.fn(() => true),
     ...patch,
   };
@@ -112,7 +150,7 @@ describe('段6② YouTube で聞く画面', () => {
     expect(playerOpts.signal).toBeInstanceOf(AbortSignal);
     expect(deps.loadYouTubeApi.mock.calls[0][0].signal).toBeInstanceOf(AbortSignal);
     expect(root.textContent).toContain('0:00 / 3:45');
-    expect(byLabel(root, '● 歌う')).toBeUndefined(); // 歌うのは次の手順
+    expect(byLabel(root, '● 歌う')).toBeUndefined(); // 区間が決まるまで出さない
     expect(findBanned(root.textContent)).toEqual([]);
   });
 
@@ -452,5 +490,291 @@ describe('段6② YouTube で聞く画面', () => {
       .map(([, v]) => (typeof v === 'function' ? v('0:10.0', '0:12.0') : v));
     expect(texts).toContain('YouTube で 練習');
     for (const t of texts) expect(findBanned(t)).toEqual([]);
+  });
+
+  describe('YouTube に合わせて歌う・結果', () => {
+    const YT1 = { id: 'y1', name: '区間1', startSec: 10, endSec: 12, lastLine: null, lastRatio: null };
+
+    beforeEach(() => {
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null); // jsdom は絵を描けない
+      graphLog.options.length = 0;
+      graphLog.ghosts.length = 0;
+      graphLog.rangeLines.length = 0;
+    });
+
+    // 「歌う」→「つけた」→ 前奏のあと、区間の始まりから終わりまで stepMs ごとに fn(i) の高さを流す。
+    // 偽の時計：区間の始まりの位置を now=1000 で読ませ、そこから曲の位置 ms ぶん（速さで割った本当の時間）進める
+    async function singTake(root, { from = 10, to = 12, rate = 1, stepMs = 20, fn = () => 55 } = {}) {
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      nowMs = 1000;
+      player.sec = from;
+      timers.tick();
+      let i = 0;
+      for (let ms = 0; ms <= (to - from) * 1000; ms += stepMs) {
+        nowMs = 1000 + ms / rate;
+        mic.emit(fn(i));
+        i += 1;
+      }
+      nowMs = 1000 + ((to - from) * 1000 + 10) / rate;
+      player.sec = to + 0.01;
+      timers.tick();
+      await settle();
+    }
+
+    test('「● 歌う」→ イヤホンの確認。「つけた」までマイクは開かない。歌い終わるとマイクを閉じ、pause する', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      expect(root.textContent).toContain('イヤホンを つけましたか？');
+      expect(openMic).not.toHaveBeenCalled();
+      expect(root.querySelector('.yt-frame')).toBeTruthy(); // プレーヤーの枠は残す（描きなおすと動画が読みなおしになる）
+      await click(root, 'つけた');
+      expect(openMic).toHaveBeenCalledTimes(1);
+      expect(player.seekTo).toHaveBeenLastCalledWith(10 - CONFIG.stage6.leadInSec);
+      expect(player.play).toHaveBeenCalled();
+      expect([...timers.active.values()][0].ms).toBe(CONFIG.stage6.yt.pollMs);
+      expect(mic.close).not.toHaveBeenCalled();
+      playerOpts.onState('playing');
+      nowMs = 1000;
+      player.sec = 10;
+      timers.tick();
+      for (let ms = 0; ms <= 2000; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
+      nowMs = 3010;
+      player.sec = 12.01;
+      timers.tick();
+      await settle();
+      expect(player.pause).toHaveBeenCalled();
+      expect(mic.close).toHaveBeenCalledTimes(1);
+      expect(timers.active.size).toBe(0);
+      expect(player.destroy).not.toHaveBeenCalled();
+      expect(findBanned(root.textContent)).toEqual([]);
+    });
+
+    test('始まりが前奏より前なら 0 へ seekTo。「やめる」で戻るとマイクは開かない', async () => {
+      addSong(song({ ytSections: [{ ...YT1, startSec: 1, endSec: 3 }] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'やめる');
+      expect(openMic).not.toHaveBeenCalled();
+      expect(byLabel(root, '● 歌う')).toBeTruthy();
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      expect(player.seekTo).toHaveBeenLastCalledWith(0);
+    });
+
+    test('同じ高さを流す → 「まっすぐ」と、点数ではないという注意', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: () => 55 });
+      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(root.textContent).toContain('声の 高さの ゆれ方の 目安で、うまい・へたの 点数ではありません');
+      expect(findBanned(root.textContent)).toEqual([]);
+    });
+
+    test('±60 セントでゆれる → 「よく ゆれる」、±40 セント → 「ときどき ゆれる」', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: (i) => 55 + (i % 2 ? 0.6 : -0.6) });
+      expect(root.textContent).toContain('ゆれの 目安：よく ゆれる');
+      await click(root, 'もう一度 歌う');
+      await click(root, 'つけた');
+      expect(openMic).toHaveBeenCalledTimes(2); // 歌い終わるたびに閉じるので、開きなおす
+      await click(root, '■ 止める');
+      await singTake(root, { fn: (i) => 55 + (i % 2 ? 0.4 : -0.4) });
+      expect(root.textContent).toContain('ゆれの 目安：ときどき ゆれる');
+    });
+
+    test('無音（null ばかり）→ 「声が 聞こえませんでした」。ゆれは出ず、履歴にも前回の線にも入らない', async () => {
+      const kept = { ...YT1, lastLine: [{ t: 0, midi: 64 }] };
+      addSong(song({ ytSections: [kept] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: () => null });
+      expect(root.textContent).toContain('声が 聞こえませんでした。もう一度 ためして みましょう');
+      expect(root.textContent).not.toContain('ゆれの 目安');
+      expect(getSong('s1').ytSections[0].lastLine).toEqual([{ t: 0, midi: 64 }]);
+      await click(root, 'おわる');
+      expect(root.textContent).toBe('曲の一覧');
+      expect(loadState().history).toEqual([]);
+    });
+
+    test('声の地図 50〜60：65 を3コマ・45 を2コマ → 「上に 3回・下に 2回」と「無理に のばさない」。地図の線も引く', async () => {
+      saveRange({ comfort: 55, low: 50, high: 60 });
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      // はじめの数コマはマイクの遅れのぶん前奏あつかいで捨てるので、20コマ目から外の音を出す
+      const fn = (i) => ([20, 21, 22].includes(i) ? 65 : [40, 41].includes(i) ? 45 : 55);
+      await singTake(root, { fn });
+      expect(graphLog.rangeLines).toContainEqual([50, 60]);
+      expect(root.textContent).toContain('声の 地図の 外：上に 3回・下に 2回');
+      expect(root.textContent).toContain('高い 所は 無理に のばさないで ください');
+      expect(findBanned(root.textContent)).toEqual([]);
+    });
+
+    test('声の地図が無いときは、地図の外の行も線も出ない', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: (i) => (i > 20 && i < 25 ? 80 : 55) });
+      expect(root.textContent).not.toContain('声の 地図の 外');
+      expect(graphLog.rangeLines.at(-1)).toEqual([null, null]);
+    });
+
+    test('地図の中だけなら、地図の外の行は出ない', async () => {
+      saveRange({ comfort: 55, low: 50, high: 60 });
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: () => 55 });
+      expect(root.textContent).not.toContain('声の 地図の 外');
+      expect(root.textContent).not.toContain('無理に のばさないで');
+    });
+
+    test('グラフの窓は max(6000, 区間の長さ + 前奏)', async () => {
+      addSong(song({ ytSections: [YT1, { ...YT1, id: 'y2', name: '区間2', startSec: 20, endSec: 30 }] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      expect(graphLog.options.at(-1).windowMs).toBe(6000);
+      await click(root, '■ 止める');
+      await click(root, '区間2');
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      expect(graphLog.options.at(-1).windowMs).toBe(10000 + CONFIG.stage6.leadInSec * 1000);
+    });
+
+    test('保存した区間で2回歌う → 2回目に前回の線が setGhost に渡る。lastLine が更新され lastRatio は null のまま', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: () => 55 });
+      expect(graphLog.ghosts).toEqual([]); // 1回目は前回の線が無い
+      const line = getSong('s1').ytSections[0].lastLine;
+      expect(line.length).toBeGreaterThan(10);
+      expect(line[0].midi).toBe(55);
+      expect(line[0].t).toBeGreaterThanOrEqual(0); // 区間の始まりを 0 とした時刻（小数の誤差で 0 か 20）
+      expect(line[0].t).toBeLessThanOrEqual(20);
+      expect(getSong('s1').ytSections[0].lastRatio).toBeNull();
+      await click(root, 'もう一度 歌う');
+      await click(root, 'つけた');
+      expect(graphLog.ghosts.at(-1)).toEqual(line);
+      expect(root.textContent).not.toMatch(/\d+%/); // 前回との比べは線だけ（数字の点数は出さない）
+    });
+
+    test('保存していない区間で歌っても、区間は保存されない', async () => {
+      addSong(song());
+      const root = await open(makeDeps());
+      await mark(root, 10, 12);
+      await singTake(root, { fn: () => 55 });
+      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(getSong('s1').ytSections).toEqual([]);
+    });
+
+    test('マイクの時刻：速さ 0.5 でも、区間の始まりを 0 とし、マイクの遅れ（latencyMs × 速さ）を引く', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '0.5倍');
+      await singTake(root, { rate: 0.5, stepMs: 25, fn: () => 55 });
+      const lag = CONFIG.stage6.latencyMs * 0.5; // 60ms
+      const line = getSong('s1').ytSections[0].lastLine;
+      // 曲の位置 75ms のコマ → 75 − 60 = 15ms（それより前のコマは始まりより前なので捨てる）
+      expect(line[0].t).toBe(75 - lag);
+      expect(line[1].t).toBe(100 - lag);
+      expect(line.at(-1).t).toBeLessThanOrEqual(2000);
+    });
+
+    test('歌い終えたら履歴に kind: yt・songTitle・tries: 1（「おわる」で1回だけ）', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: () => 55 });
+      await click(root, 'おわる');
+      expect(root.textContent).toBe('曲の一覧');
+      const h = loadState().history;
+      expect(h).toHaveLength(1);
+      expect(h[0]).toMatchObject({ stage: 6, tries: 1, successes: 0, value: null, songTitle: '曲Y', kind: 'yt' });
+      expect(h[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(player.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    test('歌う途中で go("home") → 履歴に入らず、マイクが閉じ、destroy が呼ばれ、タイマーが止まる', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await singTake(root, { fn: () => null }); // 声なしの回は数えない
+      await click(root, 'もう一度 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      for (let i = 0; i < 30; i++) mic.emit(55);
+      go('home');
+      await settle();
+      expect(root.textContent).toBe('ホーム');
+      expect(loadState().history).toEqual([]);
+      expect(mic.close).toHaveBeenCalled();
+      expect(player.destroy).toHaveBeenCalledTimes(1);
+      expect(timers.active.size).toBe(0);
+    });
+
+    test('「■ 止める」で途中でやめた回は数えない。動画が区間の終わりより先に ended になったら、そこで結果を出す', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      await click(root, '■ 止める');
+      expect(player.pause).toHaveBeenCalled();
+      expect(mic.close).toHaveBeenCalledTimes(1);
+      expect(byLabel(root, '● 歌う')).toBeTruthy();
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      nowMs = 1000;
+      player.sec = 10;
+      timers.tick();
+      for (let ms = 0; ms <= 1500; ms += 20) { nowMs = 1000 + ms; mic.emit(55); }
+      playerOpts.onState('ended');
+      await settle();
+      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      expect(timers.active.size).toBe(0);
+      go('home');
+      await settle();
+      expect(loadState().history).toHaveLength(1);
+    });
+
+    test('歌う途中でアプリを隠してマイクが止まる → プレーヤーを止め、案内と「もう一度 歌う」。数えない', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      mic.hide();
+      await settle();
+      expect(player.pause).toHaveBeenCalled();
+      expect(timers.active.size).toBe(0);
+      expect(root.textContent).toContain('マイクが 止まりました。');
+      await click(root, 'もう一度 歌う');
+      await click(root, 'つけた');
+      expect(openMic).toHaveBeenCalledTimes(2);
+      go('home');
+      await settle();
+      expect(loadState().history).toEqual([]);
+    });
+
+    test('曲のファイルもある曲だけ「お手本の 線で 練習する」→ 曲の画面へ', async () => {
+      addSong(song({ hasFile: true, durationSec: 225 }));
+      const root = await open(makeDeps());
+      let went = null;
+      register('song', (r, params) => { went = params.get('id'); r.textContent = '曲の画面'; });
+      await click(root, 'お手本の 線で 練習する');
+      expect(went).toBe('s1');
+      localStorage.clear();
+      addSong(song());
+      const root2 = await open(makeDeps());
+      expect(byLabel(root2, 'お手本の 線で 練習する')).toBeUndefined();
+    });
+
+    test('新しい文に禁止の言葉が無い', () => {
+      const texts = [STAGE6_TEXT.ytSteady, STAGE6_TEXT.ytSome, STAGE6_TEXT.ytWobbly, STAGE6_TEXT.ytWobbleNote,
+        STAGE6_TEXT.ytNoVoice, STAGE6_TEXT.ytOutside(3, 2), STAGE6_TEXT.ytToSong];
+      for (const t of texts) {
+        expect(typeof t).toBe('string');
+        expect(findBanned(t)).toEqual([]);
+      }
+    });
   });
 });
