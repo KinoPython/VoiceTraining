@@ -54,6 +54,8 @@ canvas.song-overview { display: block; width: 100%; height: 120px; touch-action:
 
 /* ボタン・カード・注意書き（src/ui/components.js） */
 .btn { display: block; width: 100%; margin: 8px 0; padding: 12px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--accent); border-radius: 10px; }
+/* 選べるボタン（速さ・聞く音）。いま選んでいるものを帯の色で見せる */
+.btn[aria-pressed="true"] { background: var(--band); font-weight: bold; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 8px 0; }
 .note { color: var(--muted); margin: 8px 0; }
 .note a { color: var(--accent); } /* リンクも色トークンで（暗い画面でも読めるように） */

@@ -11,6 +11,7 @@ import { renderStage3 } from './screens/stage3.js';
 import { renderStage4 } from './screens/stage4.js';
 import { renderStage5 } from './screens/stage5.js';
 import { renderStage6List } from './screens/stage6List.js';
+import { renderStage6Song } from './screens/stage6Song.js';
 import { renderRecord } from './screens/record.js';
 import { renderSettings } from './screens/settings.js';
 import { renderLearn, renderArticle } from './screens/article.js';
@@ -25,11 +26,11 @@ register('stage3', (root, params) => renderStage3(root, params));
 register('stage4', (root, params) => renderStage4(root, params));
 register('stage5', (root, params) => renderStage5(root, params));
 register('stage6', (root, params) => renderStage6List(root, params));
-// 曲の画面（Task 7）・歌声だけのファイルの作り方（Task 8）ができるまでの仮の画面
+register('song', (root, params) => renderStage6Song(root, params));
+// 歌声だけのファイルの作り方（Task 8）ができるまでの仮の画面
 const placeholder = (root) => {
   root.replaceChildren(heading('準備中'), button('ホームへ', () => go('home')));
 };
-register('song', placeholder);
 register('vocalGuide', placeholder);
 register('record', renderRecord);
 register('settings', (root, params) => renderSettings(root, params));
