@@ -112,4 +112,10 @@ describe('noteVerdicts', () => {
   it('midi を一緒に返す', () => {
     expect(noteVerdicts([], segs, 50).map((v) => v.midi)).toEqual([60, 64, 62]);
   });
+  it('skipMsOf を渡すと、音ごとに飛ばす長さを変えられる（段6の短い音のため）', () => {
+    const short = [{ midi: 60, startMs: 0, endMs: 200 }];
+    const r = [0, 60, 120, 180].map((t) => ({ t, midi: 60 }));
+    expect(noteVerdicts(r, short, 50)[0].verdict).toBe('none'); // 段5のまま：250ms 飛ばすので読みが残らない
+    expect(noteVerdicts(r, short, 50, () => 60)[0].verdict).toBe('ok');
+  });
 });

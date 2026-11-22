@@ -41,6 +41,23 @@ describe('scoreSection', () => {
     const r = scoreSection([...sing((s) => (s < 1000 ? 60 : 62)), ...extra], notes, 50);
     expect(r.ratio).toBeCloseTo(1, 1);
   });
+  it('短い音（200ms）も数える：飛ばすのは音の長さの3割まで', () => {
+    const short = [{ midi: 60, startMs: 0, endMs: 200 }, { midi: 62, startMs: 200, endMs: 400 }];
+    const readings = [];
+    for (let s = 0; s < 400; s += 20) readings.push({ t: s + LAT, midi: s < 200 ? 60 : 62 });
+    const r = scoreSection(readings, short, 50);
+    expect(r.ratio).toBeCloseTo(1, 5);
+    expect(r.verdicts).toEqual(['ok', 'ok']);
+  });
+  it('長い音では、出だしの 250ms はこれまでどおり数えない', () => {
+    // 出だし 240ms だけ外れて、あとは合っている → 100%
+    const readings = [];
+    for (let s = 0; s < 1000; s += 20) readings.push({ t: s + LAT, midi: s < 240 ? 66 : 60 });
+    expect(scoreSection(readings, [notes[0]], 50).ratio).toBeCloseTo(1, 5);
+  });
+  it('音はあるのに判定できる読みが1つも無いときは 0% ではなく null', () => {
+    expect(scoreSection([], notes, 50).ratio).toBeNull();
+  });
   it('notes が空なら ratio は null', () => {
     expect(scoreSection(sing(() => 60), [], 50)).toEqual({ ratio: null, verdicts: [] });
   });
@@ -58,6 +75,21 @@ describe('notesInSection', () => {
       { midi: 64, startMs: 2000, endMs: 2500 },
     ];
     expect(notesInSection(list, 1, 2)).toEqual([{ midi: 62, startMs: 0, endMs: 1000 }]);
+  });
+});
+
+describe('lineToGhost（保存する前回の線）', () => {
+  it('t は整数の ms、midi は小数2けたに丸める（保存の量をへらすため）', () => {
+    const readings = [{ t: 0.4, midi: 60.123456 }, { t: 20.6, midi: null }, { t: 45.2, midi: 61.006 }];
+    expect(lineToGhost(readings)).toEqual([
+      { t: 0, midi: 60.12 }, { t: 21, midi: null }, { t: 45, midi: 61.01 },
+    ]);
+  });
+  it(`点の数は ${CONFIG.stage6.ghostMaxPoints} まで（長い区間でも保存がいっぱいにならないように）`, () => {
+    const readings = Array.from({ length: 5000 }, (_, k) => ({ t: k * 20, midi: 60 }));
+    const out = lineToGhost(readings);
+    expect(out).toHaveLength(CONFIG.stage6.ghostMaxPoints);
+    expect(out[0].t).toBe(0);
   });
 });
 

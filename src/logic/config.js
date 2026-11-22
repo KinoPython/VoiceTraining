@@ -10,7 +10,7 @@ export const CONFIG = {
   stage3: { tryMs: 10000, toneMs: 1000, graphSpan: 7 },
   stage4: { toneMs: 1500, waitMs: 500, tryMs: 6000 },
   stage5: { noteMs: 800, skipMs: 250, passRatio: 0.6 },
-  stage6: { hopMs: 20, noteMinMs: 150, noteTolCents: 50, latencyMs: 120, leadInSec: 2, maxSections: 5, lengthMismatchSec: 1, keyAdviceMax: 6, rates: [1, 0.75, 0.5] },
+  stage6: { hopMs: 20, noteMinMs: 150, noteTolCents: 50, latencyMs: 120, leadInSec: 2, maxSections: 5, lengthMismatchSec: 1, keyAdviceMax: 6, rates: [1, 0.75, 0.5], skipRatio: 0.3, ghostMaxPoints: 3000, nudgeSec: 0.5 },
   session: { minutes: 10 },
   recommend: { passLevel: 4 }, // この水準に届いたら、おすすめが次の段へ進む
 };

@@ -75,11 +75,14 @@ const median = (values) => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
+const stage5Skip = () => CONFIG.stage5.skipMs;
+
 // 音ごとの結果。'ok'（合って いた）/ 'high'（高め）/ 'low'（低め）/ 'none'（声が聞こえなかった）。
-// 一瞬の外れに引っぱられないよう、窓の中の読みの中央値で見る。1オクターブちがいは合っている扱い
-export function noteVerdicts(readings, segments, toleranceCents) {
+// 一瞬の外れに引っぱられないよう、窓の中の読みの中央値で見る。1オクターブちがいは合っている扱い。
+// skipMsOf(音) は出だしの数えない長さ。段5はいつも skipMs、段6は短い音のために音ごとに変える
+export function noteVerdicts(readings, segments, toleranceCents, skipMsOf = stage5Skip) {
   return segments.map((seg) => {
-    const from = seg.startMs + CONFIG.stage5.skipMs;
+    const from = seg.startMs + skipMsOf(seg);
     const voiced = readings.filter((r) => r.midi !== null && r.t >= from && r.t < seg.endMs).map((r) => r.midi);
     if (voiced.length === 0) return { midi: seg.midi, verdict: 'none' };
     const { cents } = foldOctave(centsOff(median(voiced), seg.midi));
