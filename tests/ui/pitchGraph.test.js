@@ -95,4 +95,39 @@ describe('createPitchGraph', () => {
     const band = rects.find((r) => Math.abs(r[1] - 150) < 1 && Math.abs(r[3] - 150) < 1);
     expect(band).toBeTruthy();
   });
+
+  it('setGhost：jsdom で例外にならず、記録 ctx では muted の薄い線が描かれる', () => {
+    const c = document.createElement('canvas');
+    expect(() => createPitchGraph(c, { minMidi: 48, maxMidi: 72 }).setGhost([{ t: 0, midi: 60 }])).not.toThrow();
+    const styles = [];
+    const calls = [];
+    const ctx = new Proxy({}, {
+      get: (_, n) => (...a) => calls.push([n, ...a]),
+      set: (_, n, v) => { if (n === 'strokeStyle') styles.push(v); return true; },
+    });
+    const canvas = document.createElement('canvas');
+    canvas.getContext = () => ctx;
+    document.documentElement.style.setProperty('--muted', '#123456');
+    const g = createPitchGraph(canvas, { minMidi: 48, maxMidi: 72, windowMs: 1000 });
+    g.setGhost([{ t: 0, midi: 60 }, { t: 100, midi: null }, { t: 500, midi: 62 }]);
+    g.push(1000, null);
+    expect(styles).toContain('#123456');
+    g.setGhost(null);
+    expect(() => g.push(1100, null)).not.toThrow();
+    document.documentElement.style.removeProperty('--muted');
+  });
+
+  it('over: true の帯は --band-over の色', () => {
+    const fills = [];
+    const ctx = new Proxy({}, {
+      get: () => () => {},
+      set: (_, n, v) => { if (n === 'fillStyle') fills.push(v); return true; },
+    });
+    const canvas = document.createElement('canvas');
+    canvas.getContext = () => ctx;
+    document.documentElement.style.setProperty('--band-over', '#abcdef');
+    createPitchGraph(canvas, { minMidi: 48, maxMidi: 72 }).setBands([{ midi: 60, cents: 50, over: true }]);
+    expect(fills).toContain('#abcdef');
+    document.documentElement.style.removeProperty('--band-over');
+  });
 });

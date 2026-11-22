@@ -6,6 +6,7 @@
   --accent: #5b6cf0;
   --band: #e4e6fb;
   --band-ok: #cfeedd;
+  --band-over: #fbe9d0;
   --line: #d9d6cd;
   --card: #ffffff;
 }
@@ -18,6 +19,7 @@
     --accent: #8f9bff;
     --band: #2c2f4d;
     --band-ok: #1f4a36;
+    --band-over: #4a3a22;
     --line: #3a3947;
     --card: #25252f;
   }
@@ -47,6 +49,8 @@ body {
 
 /* 線グラフ：CSS で大きさを固定する（固定しないと実サイズに引きずられて伸び続ける） */
 canvas.pitch-graph { display: block; width: 100%; height: 240px; }
+/* 曲の線の絵：大きさを CSS で固定する（実サイズで測ると雪だるま式に増えるため） */
+canvas.song-overview { display: block; width: 100%; height: 120px; touch-action: none; }
 
 /* ボタン・カード・注意書き（src/ui/components.js） */
 .btn { display: block; width: 100%; margin: 8px 0; padding: 12px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--accent); border-radius: 10px; }
