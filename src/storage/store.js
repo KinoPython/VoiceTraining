@@ -21,7 +21,9 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // 1回分の記録として使える形か（段の番号が 1〜6 の整数）。
 // こわれた記録がまじると、ホームやきろくの画面が開けなくなるため
-const isHistoryEntry = (e) => isObject(e) && Number.isInteger(e.stage) && e.stage >= 1 && e.stage <= 6;
+// kind は「YouTube で練習」の記録の印。'yt' 以外の印が付いた記録は捨てる
+const isHistoryEntry = (e) => isObject(e) && Number.isInteger(e.stage) && e.stage >= 1 && e.stage <= 6
+  && (e.kind === undefined || e.kind === 'yt');
 
 // 曲の区間として使える形か。こわれた区間がまじると、練習の画面が開けなくなるため
 const isLastLine = (l) => l === null || (Array.isArray(l) && l.every((p) => isObject(p) && isNum(p.t) && (p.midi === null || isNum(p.midi))));
@@ -34,15 +36,23 @@ const isSong = (x) => isObject(x) && typeof x.id === 'string' && typeof x.title 
   && typeof x.hasFile === 'boolean' && typeof x.hasVocal === 'boolean'
   && isNum(x.durationSec) && isNum(x.keyAdvice) && Array.isArray(x.sections);
 
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+
 // 決まった項目だけ残す（よぶんな項目がバックアップに紛れこまないように）
+const cleanSections = (list) => (Array.isArray(list) ? list : []).filter(isSection)
+  .slice(0, CONFIG.stage6.maxSections).map((c) => ({
+    id: c.id, name: c.name, startSec: c.startSec, endSec: c.endSec,
+    lastLine: c.lastLine, lastRatio: c.lastRatio,
+  }));
+
 function cleanSong(x) {
   return {
     id: x.id, title: x.title, hasFile: x.hasFile, hasVocal: x.hasVocal,
     durationSec: x.durationSec, keyAdvice: x.keyAdvice,
-    sections: x.sections.filter(isSection).slice(0, CONFIG.stage6.maxSections).map((c) => ({
-      id: c.id, name: c.name, startSec: c.startSec, endSec: c.endSec,
-      lastLine: c.lastLine, lastRatio: c.lastRatio,
-    })),
+    sections: cleanSections(x.sections),
+    // YouTube の動画 ID（11 文字）。古い曲や変な値は null、区間は空（YouTube 用の区間は別に持つ）
+    youtubeId: typeof x.youtubeId === 'string' && YT_ID.test(x.youtubeId) ? x.youtubeId : null,
+    ytSections: cleanSections(x.ytSections),
   };
 }
 
@@ -141,16 +151,22 @@ export const removeSong = (id) => update((s) => { s.songs = s.songs.filter((x) =
 export const getSong = (id) => loadState().songs.find((x) => x.id === id) ?? null;
 
 // 区間を足す（同じ id なら上書き）。1曲に maxSections まで。曲が無いときは 'nosong'（例外にはしない）
-export function saveSection(songId, section) {
+// which：'sections'（ファイルの曲）か 'ytSections'（YouTube の曲）。ほかの値は 'sections' にそろえる
+const listName = (which) => (which === 'ytSections' ? 'ytSections' : 'sections');
+
+export function saveSection(songId, section, which = 'sections') {
+  const name = listName(which);
   let result = { ok: false, reason: 'nosong' };
   const ok = update((s) => {
     const song = s.songs.find((x) => x.id === songId);
     if (!song) return;
-    const i = song.sections.findIndex((c) => c.id === section.id);
+    if (!Array.isArray(song[name])) song[name] = [];
+    const list = song[name];
+    const i = list.findIndex((c) => c.id === section.id);
     if (i >= 0) {
-      song.sections[i] = section;
-    } else if (song.sections.length < CONFIG.stage6.maxSections) {
-      song.sections.push(section);
+      list[i] = section;
+    } else if (list.length < CONFIG.stage6.maxSections) {
+      list.push(section);
     } else {
       result = { ok: false, reason: 'max' };
       return;
@@ -159,9 +175,10 @@ export function saveSection(songId, section) {
   });
   return result.ok ? written(ok) : result;
 }
-export const removeSection = (songId, sectionId) => update((s) => {
+export const removeSection = (songId, sectionId, which = 'sections') => update((s) => {
   const song = s.songs.find((x) => x.id === songId);
-  if (song) song.sections = song.sections.filter((c) => c.id !== sectionId);
+  const name = listName(which);
+  if (song) song[name] = (song[name] ?? []).filter((c) => c.id !== sectionId);
 });
 
 export const exportBackup = () => JSON.stringify(loadState());

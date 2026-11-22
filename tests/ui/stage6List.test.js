@@ -304,7 +304,7 @@ describe('段6 ファイルを選びなおす', () => {
     const root = await open(deps, '#stage6?refile=s1');
     await refile(root, ['file']);
     expect(root.textContent).toContain('この ファイルは 読めません');
-    expect(getSong('s1')).toEqual(song({ sections: [kept] }));
+    expect(getSong('s1')).toEqual(song({ sections: [kept], youtubeId: null, ytSections: [] }));
     expect(deps.putFile).not.toHaveBeenCalled();
   });
 });

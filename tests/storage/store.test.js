@@ -150,7 +150,7 @@ describe('段6：曲の記録', () => {
 
   test('addSong → getSong で同じ。removeSong で消える', () => {
     addSong(song());
-    expect(getSong('s1')).toEqual(song());
+    expect(getSong('s1')).toEqual({ ...song(), youtubeId: null, ytSections: [] });
     expect(loadState().songs).toHaveLength(1);
     removeSong('s1');
     expect(getSong('s1')).toBeNull();
@@ -199,8 +199,60 @@ describe('段6：曲の記録', () => {
     expect(text).toContain('"lastLine"');
     const back = JSON.parse(text).songs[0];
     expect(Object.keys(back).sort()).toEqual(
-      ['durationSec', 'hasFile', 'hasVocal', 'id', 'keyAdvice', 'sections', 'title']);
+      ['durationSec', 'hasFile', 'hasVocal', 'id', 'keyAdvice', 'sections', 'title', 'youtubeId', 'ytSections']);
     expect(text).not.toMatch(/blob|"line"/i);
+  });
+
+  test('updateSong で youtubeId が残り、null で消える。古い曲は null と []', () => {
+    addSong(song());
+    expect(getSong('s1').youtubeId).toBeNull();
+    expect(getSong('s1').ytSections).toEqual([]);
+    expect(updateSong('s1', { youtubeId: 'dQw4w9WgXcQ' })).toEqual({ ok: true });
+    expect(getSong('s1').youtubeId).toBe('dQw4w9WgXcQ');
+    updateSong('s1', { youtubeId: null });
+    expect(getSong('s1').youtubeId).toBeNull();
+  });
+
+  test('youtubeId が文字列でない・形がちがう曲は null にされる', () => {
+    localStorage.setItem(KEY, JSON.stringify({
+      version: 1,
+      songs: [song('a', { youtubeId: 5 }), song('b', { youtubeId: 'short' }), song('c', { youtubeId: 'dQw4w9WgXcQ<' })],
+    }));
+    expect(loadState().songs.map((x) => x.youtubeId)).toEqual([null, null, null]);
+  });
+
+  test("saveSection(..., 'ytSections') は sections と別々に 5 つまで", () => {
+    addSong(song());
+    for (let i = 0; i < 5; i++) expect(saveSection('s1', section(`y${i}`), 'ytSections')).toEqual({ ok: true });
+    expect(saveSection('s1', section('y5'), 'ytSections')).toEqual({ ok: false, reason: 'max' });
+    expect(getSong('s1').ytSections).toHaveLength(5);
+    expect(getSong('s1').sections).toHaveLength(0);
+    expect(saveSection('s1', section('a0'))).toEqual({ ok: true });
+    expect(getSong('s1').sections.map((x) => x.id)).toEqual(['a0']);
+    expect(saveSection('s1', section('y0', { lastRatio: 0.9 }), 'ytSections')).toEqual({ ok: true });
+    expect(getSong('s1').ytSections[0].lastRatio).toBe(0.9);
+    removeSection('s1', 'y0', 'ytSections');
+    expect(getSong('s1').ytSections).toHaveLength(4);
+    expect(getSong('s1').sections).toHaveLength(1);
+    removeSection('s1', 'a0');
+    expect(getSong('s1').sections).toHaveLength(0);
+    expect(getSong('s1').ytSections).toHaveLength(4);
+  });
+
+  test("history の kind は 'yt' だけ残り、ほかは捨てられる", () => {
+    addHistory({ date: '2026-11-23', stage: 6, tries: 3, successes: 2, value: 0.7, songTitle: 'A', kind: 'yt' });
+    addHistory({ date: '2026-11-23', stage: 6, tries: 3, successes: 2, value: 0.7, songTitle: 'B', kind: 'x' });
+    addHistory({ date: '2026-11-23', stage: 6, tries: 3, successes: 2, value: 0.7, songTitle: 'C' });
+    expect(loadState().history.map((h) => h.songTitle)).toEqual(['A', 'C']);
+  });
+
+  test('バックアップに youtubeId と ytSections が入る（ファイルや線は入らない）', () => {
+    addSong(song('s1', { youtubeId: 'dQw4w9WgXcQ', ytSections: [section('y')] }));
+    const back = JSON.parse(exportBackup()).songs[0];
+    expect(back.youtubeId).toBe('dQw4w9WgXcQ');
+    expect(back.ytSections.map((x) => x.id)).toEqual(['y']);
+    expect(importBackup(exportBackup())).toEqual({ ok: true });
+    expect(getSong('s1').ytSections).toHaveLength(1);
   });
 
   test('変な形の songs は捨てられ、例外にならない', () => {
