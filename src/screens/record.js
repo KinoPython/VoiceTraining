@@ -78,7 +78,10 @@ function rangeKeyboard(range) {
   });
 }
 
-const sum = (list, key) => list.reduce((total, h) => total + h[key], 0);
+// 古い・こわれた記録には数が無いことがある。数でないものは足さない（「NaN」を出さないため）
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const sum = (list, key) => list.reduce((total, h) => total + (isNum(h[key]) ? h[key] : 0), 0);
+const withValue = (list) => list.filter((h) => isNum(h.value));
 const countText = (list) => `${sum(list, 'tries')}回 中 ${sum(list, 'successes')}回 できた`;
 
 // 同じ日・同じ段の記録をまとめて、1行の文にする
@@ -87,7 +90,9 @@ function stageLine(stage, list) {
   if (stage === 1) return `${name}　差の 目安：${gapLabel(Math.min(...list.map((h) => h.value)))}`;
   if (stage === 2) return `${name}　幅 ${list[list.length - 1].value} 半音`;
   if (stage === 5) {
-    const avg = sum(list, 'value') / list.length;
+    const valued = withValue(list);
+    if (valued.length === 0) return `${name}　${countText(list)}`;
+    const avg = sum(valued, 'value') / valued.length;
     return `${name}　${countText(list)}　合いぐあい 平均 ${Math.round(avg * 100)}%（目安）`;
   }
   return `${name}　${countText(list)}`;
@@ -98,10 +103,13 @@ function stage6Lines(list) {
   const bySong = new Map();
   for (const h of list) bySong.set(h.songTitle ?? '（曲名なし）', [...(bySong.get(h.songTitle ?? '（曲名なし）') ?? []), h]);
   return [...bySong.entries()].map(([title, items]) => {
-    const tries = sum(items, 'tries');
-    const weighted = items.reduce((total, h) => total + h.value * h.tries, 0);
-    const avg = tries > 0 ? weighted / tries : 0;
-    return `好きな 曲：${title}　${countText(items)}・合いぐあい 平均 ${Math.round(avg * 100)}%（目安）`;
+    // 平均は、合いぐあいの数がある記録だけで出す。1つも無ければ平均は出さない
+    const valued = withValue(items);
+    const tries = sum(valued, 'tries');
+    const weighted = valued.reduce((total, h) => total + h.value * (isNum(h.tries) ? h.tries : 0), 0);
+    const head = `好きな 曲：${title}　${countText(items)}`;
+    if (tries === 0) return head;
+    return `${head}・合いぐあい 平均 ${Math.round((weighted / tries) * 100)}%（目安）`;
   });
 }
 

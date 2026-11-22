@@ -2,7 +2,8 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage6List } from '../../src/screens/stage6List.js';
 import { findBanned } from '../../src/logic/words.js';
-import { loadState, addSong } from '../../src/storage/store.js';
+import { loadState, addSong, getSong } from '../../src/storage/store.js';
+import { READ_FAILED } from '../../src/storage/songFiles.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 const byLabel = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent === label);
@@ -21,12 +22,14 @@ function makeDeps(patch = {}) {
     putFile: vi.fn(async () => ({ ok: true })),
     removeSongFiles: vi.fn(async () => {}),
     getFile: vi.fn(async () => new Blob(['x'])),
+    listSongIds: vi.fn(async () => []),
+    requestPersist: vi.fn(),
     confirm: vi.fn(() => true),
     ...patch,
   };
 }
 
-async function open(deps) {
+async function open(deps, hash = '#stage6') {
   resetRoutes();
   history.replaceState(null, '', location.pathname);
   register('stage6', (root, params) => renderStage6List(root, params, deps));
@@ -34,7 +37,7 @@ async function open(deps) {
   register('vocalGuide', (root) => { root.textContent = '作り方'; });
   register('home', (root) => { root.textContent = 'ホーム'; });
   const root = document.createElement('div');
-  location.hash = '#stage6';
+  location.hash = hash;
   await start(root);
   await settle();
   return root;
@@ -215,5 +218,199 @@ describe('段6 曲の一覧と追加', () => {
     const root = await open(makeDeps());
     byLabel(root, '＋ 曲を 足す').click();
     expect(findBanned(root.textContent)).toEqual([]);
+  });
+
+  test('読み出しに失敗しただけ（ファイルはあるかもしれない）のときは、選びなおしの印を出さない', async () => {
+    addSong(song());
+    const root = await open(makeDeps({ getFile: vi.fn(async () => READ_FAILED) }));
+    expect(root.textContent).toContain('曲A');
+    expect(root.textContent).not.toContain('もう一度 選んで');
+  });
+});
+
+describe('段6 ファイルを選びなおす', () => {
+  beforeEach(() => localStorage.clear());
+
+  const kept = { id: 'c1', name: '区間1', startSec: 1, endSec: 3, lastLine: [{ t: 0, midi: 60 }], lastRatio: 0.5 };
+
+  async function refile(root, kinds) {
+    for (const k of kinds) pick(root, k);
+    byLabel(root, '読みこむ').click();
+    await settle();
+  }
+
+  test('一覧の曲ごとに「ファイルを 選びなおす」。選ぶと保存しなおし、区間と前回の線は残る', async () => {
+    localStorage.setItem('koetore.v1', JSON.stringify({ version: 1, range: { comfort: 55, low: 50, high: 58 } }));
+    addSong(song({ hasFile: true, sections: [kept] }));
+    const deps = makeDeps({ getFile: vi.fn(async () => null), decode: vi.fn(async () => fakeBuffer(120)) });
+    const root = await open(deps);
+    byLabel(root, 'ファイルを 選びなおす').click();
+    expect(root.textContent).toContain('保存した 区間と 前回の 自分の 線は そのまま 残ります');
+    await refile(root, ['file']);
+    expect(deps.putFile.mock.calls.map((c) => [c[0], c[1]])).toEqual([['s1', 'file'], ['s1', 'line']]);
+    expect(deps.removeSongFiles).not.toHaveBeenCalled();
+    const s = getSong('s1');
+    expect(s).toMatchObject({ title: '曲A', hasFile: true, hasVocal: false, durationSec: 120, keyAdvice: 2 });
+    expect(s.sections).toEqual([kept]);
+    expect(loadState().songs).toHaveLength(1);
+    byLabel(root, '曲の 画面へ').click(); // 伴奏まざりの知らせのあと
+    await settle();
+    expect(location.hash).toBe('#song?id=s1');
+  });
+
+  test('#stage6?refile=曲の id で開くと、その曲の選びなおしの画面が出る', async () => {
+    addSong(song());
+    const root = await open(makeDeps(), '#stage6?refile=s1');
+    expect(byLabel(root, '読みこむ')).toBeTruthy();
+    expect(root.textContent).toContain('曲A');
+  });
+
+  test('ファイルを選ばずに「読みこむ」は案内だけ。やめると一覧へ', async () => {
+    addSong(song());
+    const deps = makeDeps();
+    const root = await open(deps, '#stage6?refile=s1');
+    byLabel(root, '読みこむ').click();
+    await settle();
+    expect(root.textContent).toContain('ファイルを 1つ 以上 選んで ください');
+    expect(deps.decode).not.toHaveBeenCalled();
+    byLabel(root, 'やめる').click();
+    expect(byLabel(root, '＋ 曲を 足す')).toBeTruthy();
+  });
+
+  test('曲ファイルだけ選びなおしても、スマホに歌声だけのファイルがあれば、線はそちらから作る', async () => {
+    addSong(song({ hasFile: true, hasVocal: true }));
+    const vocalBlob = new Blob(['v']);
+    const deps = makeDeps({ getFile: vi.fn(async (id, kind) => (kind === 'vocal' ? vocalBlob : null)) });
+    const root = await open(deps, '#stage6?refile=s1');
+    await refile(root, ['file']);
+    expect(deps.decode.mock.calls.map((c) => c[0])).toContain(vocalBlob);
+    expect(deps.putFile.mock.calls.map((c) => c[1])).toEqual(['file', 'line']); // 歌声だけは保存しなおさない
+    expect(deps.putFile.mock.calls[1][2].fromVocal).toBe(true);
+    expect(getSong('s1')).toMatchObject({ hasFile: true, hasVocal: true });
+    expect(location.hash).toBe('#song?id=s1'); // 知らせが無いのでそのまま曲の画面へ
+  });
+
+  test('スマホに無いほうの印は外す（歌声だけを選びなおし、曲ファイルは無い）', async () => {
+    addSong(song({ hasFile: true, hasVocal: false }));
+    const deps = makeDeps({ getFile: vi.fn(async () => null) });
+    const root = await open(deps, '#stage6?refile=s1');
+    await refile(root, ['vocal']);
+    expect(getSong('s1')).toMatchObject({ hasFile: false, hasVocal: true });
+  });
+
+  test('読めないファイルを選んだら「読めません」。曲の記録はそのまま', async () => {
+    addSong(song({ sections: [kept] }));
+    const deps = makeDeps({ decode: vi.fn(async () => { throw new Error('bad'); }) });
+    const root = await open(deps, '#stage6?refile=s1');
+    await refile(root, ['file']);
+    expect(root.textContent).toContain('この ファイルは 読めません');
+    expect(getSong('s1')).toEqual(song({ sections: [kept] }));
+    expect(deps.putFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('段6 保存の失敗・置き去りのファイル・メモリ', () => {
+  beforeEach(() => localStorage.clear());
+
+  test('曲の記録（localStorage）が書けないと「保存できませんでした」。入れたファイルは消す', async () => {
+    const deps = makeDeps();
+    const root = await open(deps);
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    await fillAndSubmit(root, ['file']);
+    spy.mockRestore();
+    expect(root.textContent).toContain('保存できませんでした。ほかの 曲を 消すと 入る ことが あります');
+    const id = deps.putFile.mock.calls[0][0];
+    expect(deps.removeSongFiles).toHaveBeenCalledWith(id);
+    expect(loadState().songs).toEqual([]);
+    expect(deps.requestPersist).not.toHaveBeenCalled();
+  });
+
+  test('曲を足せたら、記録を消さないようブラウザにお願いする（requestPersist）', async () => {
+    const deps = makeDeps();
+    const root = await open(deps);
+    await fillAndSubmit(root, ['vocal']);
+    expect(deps.requestPersist).toHaveBeenCalledTimes(1);
+  });
+
+  test('一覧を開くと、記録に無い曲のファイル（置き去り）を消す', async () => {
+    addSong(song());
+    const deps = makeDeps({ listSongIds: vi.fn(async () => ['s1', 'orphan']) });
+    await open(deps);
+    expect(deps.removeSongFiles).toHaveBeenCalledWith('orphan');
+    expect(deps.removeSongFiles).not.toHaveBeenCalledWith('s1'); // 記録にある曲は消さない
+  });
+
+  test('置き場の一覧が読めない・記録が読めないときは、何も消さない', async () => {
+    addSong(song());
+    const deps = makeDeps({ listSongIds: vi.fn(async () => null) });
+    await open(deps);
+    expect(deps.removeSongFiles).not.toHaveBeenCalled();
+    localStorage.setItem('koetore.v1', '{こわれた');
+    const deps2 = makeDeps({ listSongIds: vi.fn(async () => ['s1']) });
+    await open(deps2);
+    expect(deps2.removeSongFiles).not.toHaveBeenCalled();
+  });
+
+  test('2つとも選んだら、1つずつ読み、線に使わない曲ファイルの音のデータは読まずに手放す', async () => {
+    const order = [];
+    const fileBuf = { ...fakeBuffer(100), getChannelData: vi.fn(() => new Float32Array(4)) };
+    const vocalBuf = { ...fakeBuffer(100), getChannelData: vi.fn(() => new Float32Array(4)) };
+    let releaseFirst;
+    const deps = makeDeps({
+      decode: vi.fn((blob) => {
+        order.push(blob.name);
+        if (order.length === 1) return new Promise((r) => { releaseFirst = () => r(fileBuf); });
+        return Promise.resolve(vocalBuf);
+      }),
+    });
+    const root = await open(deps);
+    byLabel(root, '＋ 曲を 足す').click();
+    const t = root.querySelector('input[type="text"]');
+    t.value = '曲';
+    t.dispatchEvent(new Event('input'));
+    pick(root, 'file', 'song.m4a');
+    pick(root, 'vocal', 'vocal.m4a');
+    byLabel(root, '追加する').click();
+    await settle();
+    expect(deps.decode).toHaveBeenCalledTimes(1); // 1つ目が終わるまで2つ目は読まない
+    releaseFirst();
+    await settle();
+    expect(order).toEqual(['song.m4a', 'vocal.m4a']);
+    expect(fileBuf.getChannelData).not.toHaveBeenCalled();
+    expect(vocalBuf.getChannelData).toHaveBeenCalled();
+    expect(deps.extractLine).toHaveBeenCalledTimes(1);
+  });
+
+  test('線を作っている間、線に使わない曲ファイルの音のデータは持ち続けない（6分の曲2つでメモリが足りなくならないように）', async () => {
+    expect(typeof globalThis.gc).toBe('function'); // vitest.config.js の --expose-gc
+    let fileRef = null;
+    let fileAlive = null;
+    const deps = makeDeps({
+      // vi.fn は返した値を覚えてしまうので、ふつうの関数にする
+      decode: async (blob) => {
+        const buf = fakeBuffer(100);
+        if (blob.name === 'song.m4a') fileRef = new WeakRef(buf);
+        return buf;
+      },
+      extractLine: async () => {
+        await new Promise((r) => setTimeout(r, 0));
+        globalThis.gc();
+        fileAlive = fileRef.deref() !== undefined;
+        return fakeLine;
+      },
+    });
+    const root = await open(deps);
+    byLabel(root, '＋ 曲を 足す').click();
+    const t = root.querySelector('input[type="text"]');
+    t.value = '曲';
+    t.dispatchEvent(new Event('input'));
+    pick(root, 'file', 'song.m4a');
+    pick(root, 'vocal', 'vocal.m4a');
+    byLabel(root, '追加する').click();
+    await settle();
+    expect(fileAlive).toBe(false);
+    expect(loadState().songs[0].durationSec).toBe(100);
   });
 });

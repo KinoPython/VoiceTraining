@@ -76,6 +76,22 @@ describe('きろく', () => {
     expect(open().textContent).toContain('好きな 曲：（曲名なし）　2回 中 1回 できた');
   });
 
+  test('value が無い・数でない記録は平均から外し、「NaN%」を出さない（段5・段6）', () => {
+    seed({ history: [
+      { date: '2026-11-20', stage: 6, tries: 2, successes: 1, value: 0.5, songTitle: '青い空' },
+      { date: '2026-11-20', stage: 6, tries: 3, successes: 1, songTitle: '青い空' },
+      { date: '2026-11-20', stage: 6, tries: 1, successes: 0, value: 'へん', songTitle: '夜のうた' },
+      { date: '2026-11-20', stage: 5, tries: 2, successes: 1, value: 0.8 },
+      { date: '2026-11-20', stage: 5, tries: 2, successes: 1 },
+    ] });
+    const t = open().textContent;
+    expect(t).not.toContain('NaN');
+    expect(t).toContain('好きな 曲：青い空　5回 中 2回 できた・合いぐあい 平均 50%（目安）');
+    expect(t).toContain('好きな 曲：夜のうた　1回 中 0回 できた');
+    expect(t).not.toContain('夜のうた　1回 中 0回 できた・合いぐあい');
+    expect(t).toContain('合いぐあい 平均 80%（目安）');
+  });
+
   test('声の地図があれば鍵盤を出す', () => {
     seed({ range });
     expect(open().querySelector('svg.keyboard')).not.toBeNull();

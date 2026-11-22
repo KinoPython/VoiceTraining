@@ -126,8 +126,12 @@ export function createSongOverview(canvas, { notes, durationSec, onSelect }) {
     const b = xToSec(x, width(), durationSec);
     onSelect(Math.min(a, b), Math.max(a, b));
   });
+  // 電話が来た・画面がスクロールしたなどで取り消されたときは、仮の選びを残さず前の選びに戻す
   canvas.addEventListener('pointercancel', () => {
+    if (startX === null) return;
     startX = null;
+    selection = before;
+    draw();
   });
 
   draw();

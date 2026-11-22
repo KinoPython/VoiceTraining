@@ -62,6 +62,20 @@ describe('createSongOverview', () => {
     expect(calls.some((c) => c[0] === 'fillRect')).toBe(true);
     expect(calls.some((c) => c[0] === 'moveTo')).toBe(true);
   });
+  it('なぞり途中で取り消される（pointercancel）と、仮の選びを消して前の選びで描きなおす', () => {
+    const { canvas, calls } = makeCanvas();
+    const onSelect = vi.fn();
+    createSongOverview(canvas, { notes, durationSec: 240, onSelect });
+    ptr(canvas, 'pointerdown', 30);
+    ptr(canvas, 'pointermove', 90); // 仮の選びが描かれる
+    calls.length = 0;
+    ptr(canvas, 'pointercancel', 90);
+    expect(calls.some((c) => c[0] === 'clearRect')).toBe(true); // 描きなおした
+    expect(calls.some((c) => c[0] === 'fillRect')).toBe(false); // 前は選びが無かったので、帯は描かない
+    ptr(canvas, 'pointermove', 120); // 取り消したあとは、動かしても選ばない
+    ptr(canvas, 'pointerup', 120);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
   it('getContext が無くても例外にならない', () => {
     const canvas = document.createElement('canvas');
     const o = createSongOverview(canvas, { notes, durationSec: 240, onSelect() {} });

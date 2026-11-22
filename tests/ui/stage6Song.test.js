@@ -17,6 +17,8 @@ import { register, start, resetRoutes, go } from '../../src/router.js';
 import { renderStage6Song } from '../../src/screens/stage6Song.js';
 import { findBanned } from '../../src/logic/words.js';
 import { loadState, addSong, saveRange, getSong } from '../../src/storage/store.js';
+import { READ_FAILED } from '../../src/storage/songFiles.js';
+import { CONFIG } from '../../src/logic/config.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const byLabel = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent === label);
@@ -121,8 +123,9 @@ describe('段6 曲で練習する画面', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   });
 
-  test('曲名と、キーの案内（keyAdvice > 0 のとき）が出る', async () => {
-    addSong(song({ keyAdvice: 2 }));
+  test('曲名と、キーの案内（いまの声の地図で計算して > 0 のとき）が出る', async () => {
+    saveRange({ comfort: 55, low: 50, high: 62 }); // お手本の高い方 64 → 2つ下げる目安
+    addSong(song({ keyAdvice: 0 })); // 曲を足したときは地図が無かった
     const root = await open(makeDeps());
     expect(root.textContent).toContain('曲A');
     expect(root.textContent).toContain('この 曲は、カラオケの キーを 2つ（半音 2つ）下げると 楽に なりそう です（目安）。');
@@ -389,5 +392,148 @@ describe('段6 曲で練習する画面', () => {
     expect(root.textContent).toContain('曲を 流せませんでした');
     expect(byLabel(root, '● 歌う')).toBeTruthy();
     expect(loadState().history).toHaveLength(0);
+  });
+
+  test('キーの案内は保存した数ではなく、いまの声の地図で出す（地図が広がったら出さない）', async () => {
+    addSong(song({ keyAdvice: 3 })); // 地図の上は 67。お手本の高い方 64 は届く
+    const root = await open(makeDeps());
+    expect(root.textContent).not.toContain('カラオケの キーを');
+  });
+
+  test('ファイルが無いときは「ファイルを 選びなおす」から一覧の選びなおしへ', async () => {
+    addSong(song());
+    const root = await open(makeDeps({ getFile: vi.fn(async () => null) }));
+    await click(root, 'ファイルを 選びなおす');
+    expect(location.hash).toBe('#stage6?refile=s1');
+  });
+
+  test('読み出しに失敗しただけなら、選びなおしではなく「もう一度 読みこむ」。押すと読みなおす', async () => {
+    addSong(song());
+    let fail = true;
+    const deps = makeDeps();
+    deps.getFile = vi.fn(async (id, kind) => {
+      if (fail) return READ_FAILED;
+      return kind === 'line' ? LINE : new Blob(['x']);
+    });
+    const root = await open(deps);
+    expect(root.textContent).toContain('ファイルを 読みこめませんでした');
+    expect(root.textContent).not.toContain('もう一度 選んで');
+    fail = false;
+    await click(root, 'もう一度 読みこむ');
+    expect(root.querySelector('canvas.song-overview')).toBeTruthy();
+  });
+
+  test('自分の線はマイクの遅れのぶん左に戻して描き・残す（判定と同じ時刻）', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    await click(root, '● 歌う');
+    await click(root, 'つけた');
+    player.sec = 4.5; // 区間の始まりから 500ms の位置で届いた声
+    mic.emit(64);
+    expect(graphLog.pushes.at(-1)).toEqual({ t: 500 - CONFIG.stage6.latencyMs, midi: 64 });
+    for (let ms = 520; ms <= 2000; ms += HOP) {
+      player.sec = 4 + ms / 1000;
+      mic.emit(64);
+    }
+    player.end();
+    await settle();
+    const saved = getSong('s1').sections.find((c) => c.id === 'c1');
+    expect(saved.lastLine[0]).toEqual({ t: 500 - CONFIG.stage6.latencyMs, midi: 64 });
+  });
+
+  test('0.5倍で流すと、引くマイクの遅れも曲の位置で半分になる', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    await click(root, '0.5倍');
+    await click(root, '● 歌う');
+    await click(root, 'つけた');
+    player.sec = 4.5;
+    mic.emit(64);
+    expect(graphLog.pushes.at(-1)).toEqual({ t: 500 - CONFIG.stage6.latencyMs * 0.5, midi: 64 });
+  });
+
+  test('短い音（200ms）ばかりの区間でも、合いぐあいが出る', async () => {
+    // 0〜2秒：200ms ごとに 60 と 62 が交互（短い音が10個）
+    const shortLine = {
+      hopMs: HOP, fromVocal: true,
+      midi: Array.from({ length: 500 }, (_, k) => (k * HOP < 2000 ? (Math.floor((k * HOP) / 200) % 2 ? 62 : 60) : null)),
+    };
+    const sec = { id: 'c5', name: '区間5', startSec: 0, endSec: 2, lastLine: null, lastRatio: null };
+    addSong(song({ sections: [sec] }));
+    const deps = makeDeps({ getFile: vi.fn(async (id, kind) => (kind === 'line' ? shortLine : new Blob(['x']))) });
+    const root = await open(deps);
+    const lat = CONFIG.stage6.latencyMs;
+    // お手本どおり。声はマイクの遅れのぶん遅れて届く
+    await singSection(root, { startSec: 0, endSec: 2 + lat / 1000 }, (t) => {
+      const ms = t * 1000 - lat;
+      return Math.floor(ms / 200) % 2 ? 62 : 60;
+    });
+    const m = root.textContent.match(/いまの 合いぐあい：(\d+)%（目安）/);
+    expect(m).not.toBeNull();
+    expect(Number(m[1])).toBeGreaterThanOrEqual(80);
+  });
+
+  test('お手本の音はあるのに判定できる読みが無いときは、0% ではなく「判定できる 音が ありませんでした」', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    await click(root, '● 歌う');
+    await click(root, 'つけた');
+    player.end(); // マイクから1つも読みが来ないまま終わった
+    await settle();
+    expect(root.textContent).toContain('判定できる 音が ありませんでした');
+    expect(root.textContent).not.toContain('0%');
+    expect(findBanned(root.textContent)).toEqual([]);
+  });
+
+  test('区間の端を 0.5秒ずつ動かせる。曲の外には出ず、短くなりすぎるときは動かない', async () => {
+    addSong(song());
+    const root = await open(makeDeps()); // 区間1（4〜6秒）が選ばれている
+    const listened = async () => { await click(root, '▶ 聞く'); return player.play.mock.calls.at(-1)[0]; };
+    await click(root, '始まりを 0.5秒 前へ');
+    expect(await listened()).toMatchObject({ fromSec: 3.5, toSec: 6 });
+    await click(root, '終わりを 0.5秒 後ろへ');
+    expect(await listened()).toMatchObject({ fromSec: 3.5, toSec: 6.5 });
+    for (let i = 0; i < 10; i++) await click(root, '終わりを 0.5秒 後ろへ');
+    expect(await listened()).toMatchObject({ toSec: 10 }); // 曲の長さ（10秒）まで
+    for (let i = 0; i < 20; i++) await click(root, '始まりを 0.5秒 後ろへ');
+    const { fromSec, toSec } = await listened();
+    expect(fromSec).toBeLessThan(toSec - CONFIG.stage6.nudgeSec);
+    await click(root, '区間を 保存'); // 動かした区間は新しい区間として残せる
+    expect(getSong('s1').sections.at(-1)).toMatchObject({ startSec: fromSec, endSec: toSec });
+  });
+
+  test('区間を選ぶ前に端を動かすと、選ぶよう案内する', async () => {
+    addSong(song({ sections: [] }));
+    const root = await open(makeDeps());
+    await click(root, '始まりを 0.5秒 前へ');
+    expect(root.textContent).toContain('線を なぞって 区間を 選んで ください');
+  });
+
+  test('「聞く」でスピーカーを借りたあとは、もとの出し方に戻るまで待ってから歌う曲を流す', async () => {
+    addSong(song());
+    let restored;
+    const deps = makeDeps({ whenSpeakerRestored: vi.fn(() => new Promise((r) => { restored = r; })) });
+    const root = await open(deps);
+    await click(root, '▶ 聞く');
+    player.play.mockClear();
+    await click(root, '● 歌う');
+    await click(root, 'つけた');
+    expect(deps.whenSpeakerRestored).toHaveBeenCalled();
+    expect(player.play).not.toHaveBeenCalled();
+    restored();
+    await settle();
+    expect(player.play).toHaveBeenLastCalledWith(expect.objectContaining({ speaker: false, loop: false }));
+  });
+
+  test('区間の線と合いぐあいを保存できなかったら、結果に「保存できませんでした」', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    await singSection(root, SING, () => 64);
+    spy.mockRestore();
+    expect(root.textContent).toMatch(/いまの 合いぐあい：\d+%/);
+    expect(root.textContent).toContain('保存できませんでした。もう一度 ためして ください');
   });
 });

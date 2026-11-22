@@ -7,9 +7,10 @@ import { createSongOverview } from '../ui/songOverview.js';
 import { createMicSession } from '../ui/practiceLoop.js';
 import { openMic } from '../audio/mic.js';
 import { createSongPlayer } from '../audio/songPlayer.js';
-import { getFile } from '../storage/songFiles.js';
+import { whenSpeakerRestored } from '../audio/tone.js';
+import { getFile, isReadFailure } from '../storage/songFiles.js';
 import { loadState, getSong, saveSection, addHistory, newId } from '../storage/store.js';
-import { toNotes } from '../logic/songLine.js';
+import { toNotes, keyAdvice } from '../logic/songLine.js';
 import { notesInSection, scoreSection, lineToGhost } from '../logic/songScore.js';
 import { toleranceFor } from '../logic/targets.js';
 import { noteLabel } from '../logic/notes.js';
@@ -17,7 +18,7 @@ import { CONFIG } from '../logic/config.js';
 import { todayString } from '../logic/today.js';
 import { STAGE6_TEXT as T, SAFETY_LINES } from '../data/copy.js';
 
-const defaultDeps = { openMic, createSongPlayer, getFile };
+const defaultDeps = { openMic, createSongPlayer, getFile, whenSpeakerRestored };
 
 const TEXT = {
   keyAdvice: (n) => `この 曲は、カラオケの キーを ${n}つ（半音 ${n}つ）下げると 楽に なりそう です（目安）。`,
@@ -42,6 +43,11 @@ const TEXT = {
   ratio: (pct) => `いまの 合いぐあい：${pct}%（目安）`,
   previous: (pct) => `前回：${pct}%（目安。その日の 声の 調子で かわります）`,
   noModel: 'この 区間には お手本の 声が ありません',
+  noScore: 'この 区間では、判定できる 音が ありませんでした。区間を 少し 長めに 選んで みて ください',
+  nudgeStartEarlier: '始まりを 0.5秒 前へ',
+  nudgeStartLater: '始まりを 0.5秒 後ろへ',
+  nudgeEndEarlier: '終わりを 0.5秒 前へ',
+  nudgeEndLater: '終わりを 0.5秒 後ろへ',
   overCare: '高い 所は 無理に のばさないで ください',
   again: 'もう一度 歌う',
   back: 'もどる',
@@ -91,6 +97,7 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   const tolerance = toleranceFor(state.levels.s5); // 帯の太さは段5のレベルに合わせる
   let song = null;
   let notes = []; // 曲全体のお手本の音（曲の始まりからの ms）
+  let advice = 0; // キーを下げる目安。いまの声の地図で毎回計算しなおす（地図を測りなおしたときのため）
   let player = null;
   let overview = null;
   let message = null; // いまの画面の案内の文（無い画面もある）
@@ -142,17 +149,24 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
 
   // ---------- 読み込み ----------
   // 曲・お手本の線・ファイルがそろわないとき（バックアップから戻した別のスマホなど）は選びなおしを促す
+  // 読めなかっただけ（iPhone でつながりが切れたなど）のときは、ファイルはあるかもしれないので選びなおしを促さない
   async function load() {
     song = getSong(songId);
     if (!song) return showMissing();
-    const [line, fileBlob, vocalBlob] = await Promise.all([
+    const [line, fileRead, vocalRead] = await Promise.all([
       d.getFile(song.id, 'line'),
       song.hasFile ? d.getFile(song.id, 'file') : null,
       song.hasVocal ? d.getFile(song.id, 'vocal') : null,
     ]);
     if (disposed) return;
+    const usable = (v) => (isReadFailure(v) ? null : v);
+    const fileBlob = usable(fileRead);
+    const vocalBlob = usable(vocalRead);
+    const someFailed = [line, fileRead, vocalRead].some(isReadFailure);
+    if (isReadFailure(line) || (someFailed && !fileBlob && !vocalBlob)) return showReadFailed();
     if (!line || (!fileBlob && !vocalBlob)) return showMissing();
     notes = toNotes(line);
+    advice = keyAdvice(notes, range);
     available.file = Boolean(fileBlob);
     available.vocal = Boolean(vocalBlob);
     source = available.file ? 'file' : 'vocal';
@@ -163,8 +177,20 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     showMain('');
   }
 
+  // 曲の記録があれば、一覧の「ファイルを 選びなおす」へ直接つなぐ
   function showMissing() {
-    root.replaceChildren(title(), note(T.refile), button(TEXT.toList, () => go('stage6')));
+    const items = [title(), note(T.refile)];
+    if (song) items.push(button(T.refileButton, () => go('stage6', { refile: song.id })));
+    items.push(button(TEXT.toList, () => go('stage6')));
+    root.replaceChildren(...items);
+  }
+
+  function showReadFailed() {
+    root.replaceChildren(
+      title(), note(T.readFailed),
+      button(T.retry, () => { root.replaceChildren(title()); load(); }),
+      button(TEXT.toList, () => go('stage6')),
+    );
   }
 
   function showStopped() {
@@ -179,6 +205,31 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     selection = { startSec, endSec, sectionId };
     overview?.setSelection(startSec, endSec);
     setMessage('');
+  }
+
+  // 区間の端を nudgeSec ずつ動かす（指でなぞるだけでは細かく合わせにくいため）。
+  // 曲の外には出さず、区間が nudgeSec より短くなる・入れかわるときは動かさない
+  const clampSec = (sec) => Math.min(song.durationSec, Math.max(0, Math.round(sec * 1000) / 1000));
+  function nudge(edge, delta) {
+    if (!selection) return setMessage(TEXT.pickFirst);
+    let { startSec, endSec } = selection;
+    if (edge === 'start') startSec = clampSec(startSec + delta);
+    else endSec = clampSec(endSec + delta);
+    if (!(startSec < endSec - CONFIG.stage6.nudgeSec)) return;
+    select(startSec, endSec, null); // 動かした区間は、保存していない区間になる（「区間を 保存」で残せる）
+  }
+
+  function nudgeButtons() {
+    const step = CONFIG.stage6.nudgeSec;
+    const box = document.createElement('div');
+    box.className = 'choices';
+    box.append(
+      button(TEXT.nudgeStartEarlier, () => nudge('start', -step)),
+      button(TEXT.nudgeStartLater, () => nudge('start', step)),
+      button(TEXT.nudgeEndEarlier, () => nudge('end', -step)),
+      button(TEXT.nudgeEndLater, () => nudge('end', step)),
+    );
+    return box;
   }
 
   function sectionButtons() {
@@ -236,9 +287,10 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     });
     if (selection) overview.setSelection(selection.startSec, selection.endSec);
     const items = [title()];
-    if (song.keyAdvice > 0) items.push(note(TEXT.keyAdvice(song.keyAdvice)));
+    if (advice > 0) items.push(note(TEXT.keyAdvice(advice)));
     items.push(
-      note(TEXT.lineNote), note(TEXT.octaveNote), canvas, sectionButtons(), button(TEXT.saveSection, saveCurrent), message,
+      note(TEXT.lineNote), note(TEXT.octaveNote), canvas, nudgeButtons(), sectionButtons(),
+      button(TEXT.saveSection, saveCurrent), message,
       button(TEXT.listen, listen), button(TEXT.stop, stopEverything), button(TEXT.sing, askEarphone),
       ...settingRows(), note(T.highCare), safetyList(SAFETY_LINES.slice(0, 3)), button(TEXT.finish, finishSession),
     );
@@ -272,9 +324,13 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     return { minMidi: Math.min(...midis) - 4, maxMidi: Math.max(...midis) + 4 };
   }
 
-  function startSinging(mic) {
+  async function startSinging(mic) {
     stopEverything();
     const myRun = runId;
+    // 「聞く」で下のスピーカーを借りていたら、マイク用の出し方（play-and-record）に戻ってから流す。
+    // 戻る前に流すと、歌う間の曲がスピーカーから鳴り、マイクが曲を拾うため
+    await d.whenSpeakerRestored();
+    if (myRun !== runId || disposed) return;
     const section = { ...selection };
     const sectionNotes = notesInSection(notes, section.startSec, section.endSec);
     const previous = savedSection(section.sectionId);
@@ -297,14 +353,19 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
     );
   }
 
+  // マイクの遅れは本当の時間。曲の位置に直すと、ゆっくり流したぶん短くなる
+  const latencyInSongMs = () => CONFIG.stage6.latencyMs * rate;
+
   // マイクの読みを集める。時刻は曲の位置（区間の始まりから ms）で測る。
-  // 曲の位置で測るので、ゆっくり流しても帯・前回の線と同じ時間の目盛りになる
+  // 曲の位置で測るので、ゆっくり流しても帯・前回の線と同じ時間の目盛りになる。
+  // 声はマイクの遅れのぶん遅れて届くので、その分を引いた時刻で描き・残す（判定と同じ時刻。線が右にずれないように）
   function collect(mic, section, graph) {
     const readings = [];
     const sectionMs = sectionMsOf(section);
+    const latencyMs = latencyInSongMs();
     cancelSing = () => { mic.onFrame(noop); cancelSing = null; };
     mic.onFrame((midi) => {
-      const t = (player.currentSec() - section.startSec) * 1000;
+      const t = (player.currentSec() - section.startSec) * 1000 - latencyMs;
       if (t < 0) return graph.push(t, null); // 前奏の間は数えない（グラフの時計だけ進める）
       if (t > sectionMs) return;
       readings.push({ t, midi });
@@ -316,9 +377,8 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   function endSinging(run) {
     if (cancelSing) cancelSing();
     run.graph.push(sectionMsOf(run.section), null); // 時計を区間の終わりまで進め、区間ぜんぶを窓に入れる
-    // マイクの遅れは本当の時間。曲の位置に直すと、ゆっくり流したぶん短くなる
-    const latencyMs = CONFIG.stage6.latencyMs * rate;
-    const { ratio, verdicts } = scoreSection(run.readings, run.sectionNotes, tolerance, latencyMs);
+    // 読みの時刻は collect でマイクの遅れを引いてあるので、ここでは引かない（0）
+    const { ratio, verdicts } = scoreSection(run.readings, run.sectionNotes, tolerance, 0);
     const kept = recordTry(ratio, run);
     showResult(ratio, verdicts, run, kept);
   }
@@ -348,7 +408,8 @@ export function renderStage6Song(root, params, deps = defaultDeps) {
   function showResult(ratio, verdicts, { sectionNotes, bands, previous, canvas }, kept) {
     const items = [title(), canvas];
     if (ratio === null) {
-      items.push(note(TEXT.noModel));
+      // お手本の音が無い区間と、音はあるが判定できる読みが無かった区間で、案内を分ける
+      items.push(note(sectionNotes.length === 0 ? TEXT.noModel : TEXT.noScore));
     } else {
       items.push(note(TEXT.ratio(percent(ratio))));
       if (previous && previous.lastRatio !== null) items.push(note(TEXT.previous(percent(previous.lastRatio))));
