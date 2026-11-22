@@ -116,7 +116,21 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
 
   // YouTube の画面の中のボタンで流したときも、位置の表示を進める（くり返し中ならそのまま）
   function onPlayerState(name) {
-    if (!disposed && name === 'playing' && pollId === null) startPoll(false);
+    if (disposed || !player) return;
+    if (name === 'playing' && pollId === null) startPoll(false);
+    if (name === 'ended' && looping && isValid(selection)) return restartLoop();
+    // くり返していないときは、止まっている間タイマーを止める（playing でまた動かす）
+    if ((name === 'paused' || name === 'ended') && !looping) {
+      stopPoll();
+      showPosition();
+    }
+  }
+
+  // 区間の終わりが動画の終わりと同じだと、位置が長さの少し手前のまま ended になり、
+  // loopAction が 'seek' に届かないことがある。終わったら始まりへ戻して、もう一度流す
+  function restartLoop() {
+    player.seekTo(selection.startSec);
+    player.play(); // ended のあとは、seekTo だけでは流れないことがある
   }
 
   // 準備のあとに来たエラー（埋め込みが止められた動画は、再生しようとして初めて分かることがある）

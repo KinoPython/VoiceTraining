@@ -4,6 +4,7 @@ import { renderStage6Yt } from '../../src/screens/stage6Yt.js';
 import { findBanned } from '../../src/logic/words.js';
 import { addSong, getSong } from '../../src/storage/store.js';
 import { CONFIG } from '../../src/logic/config.js';
+import { STAGE6_TEXT } from '../../src/data/copy.js';
 
 // 実際の YouTube にはつながない。偽のプレーヤーと偽のタイマーを deps で渡す
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -271,6 +272,36 @@ describe('段6② YouTube で聞く画面', () => {
     expect(root.textContent).toContain('1:05 / 3:45');
   });
 
+  test('くり返し中に動画が終わり（ended）、位置が長さの少し手前で止まっても、始まりへ戻して流す', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    await mark(root, 200, 225);
+    await click(root, '▶ 区間を くり返す');
+    player.seekTo.mockClear();
+    player.play.mockClear();
+    player.sec = 224.96;
+    timers.tick();
+    expect(player.seekTo).not.toHaveBeenCalled(); // まだ終わりに届いていない
+    playerOpts.onState('ended');
+    expect(player.seekTo).toHaveBeenCalledWith(200);
+    expect(player.play).toHaveBeenCalled();
+    expect(timers.active.size).toBe(1); // くり返しは続く
+  });
+
+  test('くり返していないときは、ended・paused でタイマーを止め、playing でまた動かす', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    await click(root, '▶ 再生');
+    expect(timers.active.size).toBe(1);
+    playerOpts.onState('ended');
+    expect(timers.active.size).toBe(0);
+    expect(player.seekTo).not.toHaveBeenCalled();
+    playerOpts.onState('playing');
+    expect(timers.active.size).toBe(1);
+    playerOpts.onState('paused');
+    expect(timers.active.size).toBe(0);
+  });
+
   test('速さ 0.75 → setRate(0.75)。setRate が 0.5 を返したら 0.5 のボタンが選ばれる', async () => {
     addSong(song());
     const root = await open(makeDeps());
@@ -397,5 +428,29 @@ describe('段6② YouTube で聞く画面', () => {
     go('home');
     await settle();
     expect(root.textContent).toBe('ホーム');
+    expect(deps.loadYouTubeApi.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(deps.createYtPlayer.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+
+  test('離れたあとに createYtPlayer が resolve したら、そのプレーヤーを1回 destroy し、タイマーも残らない', async () => {
+    addSong(song());
+    let resolvePlayer;
+    const deps = makeDeps({ createYtPlayer: vi.fn(() => new Promise((r) => { resolvePlayer = r; })) });
+    const root = await open(deps);
+    go('home');
+    await settle();
+    resolvePlayer(player);
+    await settle();
+    expect(player.destroy).toHaveBeenCalledTimes(1);
+    expect(timers.setInterval).not.toHaveBeenCalled();
+    expect(timers.active.size).toBe(0);
+    expect(root.textContent).toBe('ホーム');
+  });
+
+  test('YouTube の画面の文（yt…）に禁止の言葉が無い', () => {
+    const texts = Object.entries(STAGE6_TEXT).filter(([k]) => k.startsWith('yt'))
+      .map(([, v]) => (typeof v === 'function' ? v('0:10.0', '0:12.0') : v));
+    expect(texts).toContain('YouTube で 練習');
+    for (const t of texts) expect(findBanned(t)).toEqual([]);
   });
 });
