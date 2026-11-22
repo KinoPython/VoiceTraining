@@ -422,7 +422,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     // pausedBeforeLanding：届く前に一時停止された印。waitedPolls：届くまで待った回数
     take = {
       section, previous, readings: [], graph, canvas, clock: createSongClock(), mic,
-      seekSec, landed: false, playedAfterSeek: false, pausedBeforeLanding: false, waitedPolls: 0,
+      seekSec, landed: false, playedAfterSeek: false, pausedBeforeLanding: false, waitedPolls: 0, notPlayingSince: null,
     };
     mic.onFrame((midi) => onSingFrame(midi));
     // 区間の少し前から1回だけ流す
@@ -437,6 +437,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     const nowMs = d.now();
     const readSec = player.currentSec();
     if (!take.landed && !checkLanded(readSec)) return;
+    if (stalled(nowMs)) return;
     take.clock.update(readSec, nowMs, lastState === 'playing', rate);
     const { startSec, endSec } = take.section;
     if (loopAction(take.clock.estimate(nowMs), startSec, endSec, false) === 'stop') endTake();
@@ -480,10 +481,31 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     else if (userPaused) interruptTake();
   }
 
-  function interruptTake() {
+  // 届いたあとの見張り：seekWaitMs のあいだ続けて流れていなければ（自動再生が止められた・
+  // 流れる前に一時停止された・止まったまま）、待つのをやめて今回は数えない。止めたら true
+  function stalled(nowMs) {
+    if (lastState === 'playing' && take.playedAfterSeek) {
+      take.notPlayingSince = null;
+      return false;
+    }
+    take.notPlayingSince ??= nowMs;
+    if (nowMs - take.notPlayingSince < CONFIG.stage6.yt.seekWaitMs) return false;
+    interruptTake(stallText());
+    return true;
+  }
+
+  // 止まった理由の案内。一度も流れなかった／一時停止された／それ以外（読み込みで止まったまま など）
+  function stallText() {
+    if (!take.playedAfterSeek) return T.ytNotStarted;
+    return lastState === 'paused' ? T.ytPausedTake : T.ytStalledTake;
+  }
+
+  // 途中でやめて、数えずに区間の画面へ戻る（マイクを閉じ、プレーヤーも止める）
+  function interruptTake(text = T.ytPausedTake) {
     abandonTake();
     stopPoll();
-    showControls(T.ytPausedTake);
+    player?.pause();
+    showControls(text);
   }
 
   // マイクの1コマ。時刻は曲の位置（区間の始まりから ms）で測る。ゆっくり流しても前回の線と同じ目盛りになる。

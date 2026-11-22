@@ -82,4 +82,6 @@ export const STAGE6_TEXT = {
   ytOutside: (above, below) => `声の 地図の 外：上に ${above}回・下に ${below}回`,
   ytToSong: 'お手本の 線で 練習する',
   ytPausedTake: '一時停止したので、今回は 記録しません',
+  ytNotStarted: '再生が 始まりませんでした。もう一度 ためして ください',
+  ytStalledTake: '再生が 止まったので、今回は 記録しません',
 };

@@ -931,9 +931,66 @@ describe('段6② YouTube で聞く画面', () => {
       expect(mic.close).not.toHaveBeenCalled();
     });
 
+    test('位置は届いたのに、いつまでも再生が始まらない（playing が来ない）→ 待つのをやめ、数えずにマイクを閉じる', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた'); // 位置は 8 秒（seekTo の先）。でも playing は来ない（自動再生の止めなど）
+      const wait = CONFIG.stage6.yt.seekWaitMs;
+      for (nowMs = 0; nowMs < wait; nowMs += 50) timers.tick();
+      await settle();
+      expect(root.textContent).toContain('曲に 合わせて 歌って ください'); // 5 秒まではまだ待つ
+      nowMs = wait;
+      timers.tick();
+      await settle();
+      expect(root.textContent).toContain('再生が 始まりませんでした。もう一度 ためして ください');
+      expect(mic.close).toHaveBeenCalledTimes(1);
+      expect(timers.active.size).toBe(0);
+      expect(player.pause).toHaveBeenCalled();
+      expect(findBanned(root.textContent)).toEqual([]);
+      go('home');
+      await settle();
+      expect(loadState().history).toEqual([]);
+    });
+
+    test('流れはじめたあと、止まったまま（buffering など）5 秒たつ → 数えずにマイクを閉じる', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      nowMs = 0;
+      timers.tick();
+      playerOpts.onState('buffering');
+      for (nowMs = 50; nowMs <= 50 + CONFIG.stage6.yt.seekWaitMs; nowMs += 50) timers.tick();
+      await settle();
+      expect(root.textContent).toContain('再生が 止まったので、今回は 記録しません');
+      expect(mic.close).toHaveBeenCalledTimes(1);
+      expect(timers.active.size).toBe(0);
+    });
+
+    test('ふつうに流れている長い区間（10 秒）は、見張りに止められず最後まで歌える', async () => {
+      addSong(song({ ytSections: [{ ...YT1, endSec: 20 }] }));
+      const root = await open(makeDeps());
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      for (nowMs = 0; nowMs <= 12100; nowMs += 50) {
+        player.sec = 8 + nowMs / 1000;
+        timers.tick();
+        mic.emit(55);
+      }
+      await settle();
+      expect(root.textContent).toContain('ゆれの 目安：まっすぐ');
+      go('home');
+      await settle();
+      expect(loadState().history).toHaveLength(1);
+    });
+
     test('新しい文に禁止の言葉が無い', () => {
       const texts = [STAGE6_TEXT.ytSteady, STAGE6_TEXT.ytSome, STAGE6_TEXT.ytWobbly, STAGE6_TEXT.ytWobbleNote,
-        STAGE6_TEXT.ytNoVoice, STAGE6_TEXT.ytOutside(3, 2), STAGE6_TEXT.ytToSong, STAGE6_TEXT.ytPausedTake];
+        STAGE6_TEXT.ytNoVoice, STAGE6_TEXT.ytOutside(3, 2), STAGE6_TEXT.ytToSong, STAGE6_TEXT.ytPausedTake,
+        STAGE6_TEXT.ytNotStarted, STAGE6_TEXT.ytStalledTake];
       for (const t of texts) {
         expect(typeof t).toBe('string');
         expect(findBanned(t)).toEqual([]);
