@@ -210,4 +210,80 @@ describe('songPlayer', () => {
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     player.stop();
   });
+
+  describe('ended / error / dispose', () => {
+    async function speakerSetup() {
+      vi.useFakeTimers();
+      navigator.audioSession = { type: 'play-and-record' };
+      tone.setMicActive(true);
+    }
+
+    test('ended（loop でない）は resolve して借りを返す', async () => {
+      await speakerSetup();
+      const player = make();
+      const p = player.play({ ...base, speaker: true });
+      audios[0].dispatchEvent(new Event('ended'));
+      await p;
+      vi.advanceTimersByTime(250);
+      expect(navigator.audioSession.type).toBe('play-and-record');
+    });
+
+    test('ended（loop）は fromSec に戻ってもう一度再生する', async () => {
+      const player = make();
+      let done = false;
+      player.play({ ...base, loop: true }).then(() => (done = true));
+      audios[0].currentTime = 11.9;
+      audios[0].dispatchEvent(new Event('ended'));
+      await Promise.resolve();
+      expect(audios[0].currentTime).toBe(10);
+      expect(audios[0].play).toHaveBeenCalledTimes(2);
+      expect(done).toBe(false);
+      player.stop();
+    });
+
+    test('error は play を reject して借りを返す', async () => {
+      await speakerSetup();
+      const player = make();
+      const p = player.play({ ...base, speaker: true });
+      audios[0].dispatchEvent(new Event('error'));
+      await expect(p).rejects.toBeInstanceOf(Error);
+      vi.advanceTimersByTime(250);
+      expect(navigator.audioSession.type).toBe('play-and-record');
+    });
+
+    test('audio.play() が同期で投げても、借りを返して reject する', async () => {
+      await speakerSetup();
+      const err = new Error('boom');
+      const player = make({
+        createAudio: (url) => {
+          const a = makeFakeAudio(url);
+          a.play = vi.fn(() => {
+            throw err;
+          });
+          return a;
+        },
+      });
+      await expect(player.play({ ...base, speaker: true })).rejects.toBe(err);
+      vi.advanceTimersByTime(250);
+      expect(navigator.audioSession.type).toBe('play-and-record');
+    });
+
+    test('dispose は src を空にして listener を外し、その後の play は reject する', async () => {
+      const player = make();
+      player.play(base);
+      const a = audios[0];
+      a.removeAttribute = vi.fn();
+      a.load = vi.fn();
+      player.dispose();
+      expect(a.removeAttribute).toHaveBeenCalledWith('src');
+      expect(a.load).toHaveBeenCalled();
+      expect(player.currentSec()).toBe(0);
+      a.currentTime = 99;
+      const cb = vi.fn();
+      player.onTime(cb);
+      a.dispatchEvent(new Event('timeupdate'));
+      expect(cb).not.toHaveBeenCalled();
+      await expect(player.play(base)).rejects.toBeInstanceOf(Error);
+    });
+  });
 });
