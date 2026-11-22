@@ -35,6 +35,7 @@ const LAND_BEFORE_SEC = 0.5;
 const LAND_AFTER_SEC = 1.0;
 const sectionMsOf = (section) => (section.endSec - section.startSec) * 1000;
 // ゆれの目安 → 結果の文（'none' は別の文にする。声が無いのに「少なめ」と言わないため）
+// 'short' は 声は 聞こえたが 伸ばす 所が 少なく、測れなかった 回（数えるが ゆれの 目安は 出さない）
 const WOBBLE_TEXT = { few: T.ytFew, normal: T.ytNormal, many: T.ytMany };
 // 苦しい・痛い ときは やめる／声がれが 続くときは 耳鼻咽喉科、の 2つ。歌う 直前と 歌った あとに 出す
 // （ボタンの 並びの いちばん 下だけだと、スマホでは 見えない ことが 多いため）
@@ -138,7 +139,8 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     frame.className = 'yt-frame';
     frame.append(holder);
     controls = document.createElement('div');
-    controls.append(note(T.ytLoading));
+    // 読み込みが 長く かかる・止まった ときも、ここから 一覧へ 戻れる ように する（離れると 待ちは 中止される）
+    controls.append(note(T.ytLoading), button(TEXT.toList, () => go('stage6')));
     // 実際に YouTube に つながる この画面で、何が 送られるかを 知らせる（足す 画面だけでは 見ない 人が いるため）。
     // イヤホンの 文は 段6①と 同じ（音量の 注意も ふくむ）
     root.replaceChildren(title(), note(T.ytNotice), note(T.earphone), frame, controls);
@@ -177,7 +179,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   // loopAction が 'seek' に届かないことがある。終わったら始まりへ戻して、もう一度流す
   function restartLoop() {
     player.seekTo(selection.startSec);
-    player.play(); // ended のあとは、seekTo だけでは流れないことがある
+    safePlay(); // ended のあとは、seekTo だけでは流れないことがある
   }
 
   // 準備のあとに来たエラー（埋め込みが止められた動画は、再生しようとして初めて分かることがある）
@@ -214,15 +216,27 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     pollId = d.setInterval(tick, CONFIG.stage6.yt.pollMs);
   }
 
+  // 聞く ときの 再生。play が その場で 失敗したり、失敗の Promise を 返したり（自動再生を 止められた など）
+  // しても 画面は 止めず、短い 案内だけ 出す
+  function safePlay() {
+    const failed = () => { if (!disposed) setMessage(T.ytPlayFailed); };
+    try {
+      const result = player.play();
+      if (typeof result?.catch === 'function') result.catch(failed);
+    } catch {
+      failed();
+    }
+  }
+
   function playHere() {
-    player.play();
+    safePlay();
     startPoll(false);
   }
 
   function startLoop() {
     if (!isValid(selection)) return setMessage(rangeProblem());
     player.seekTo(selection.startSec);
-    player.play();
+    safePlay();
     startPoll(true);
   }
 
@@ -463,7 +477,11 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
       return false;
     }
     take.waitedPolls += 1;
-    if (take.waitedPolls * CONFIG.stage6.yt.pollMs >= CONFIG.stage6.yt.seekWaitMs) endTake();
+    // 届かない まま 時間切れ：自動再生を 止められた・広告が 流れて いる など。声の 無い 回では ないので、
+    // 「声が 聞こえませんでした」とは 言わず、再生の 案内を 出して 数えない
+    if (take.waitedPolls * CONFIG.stage6.yt.pollMs >= CONFIG.stage6.yt.seekWaitMs) {
+      interruptTake(take.playedAfterSeek ? T.ytStalledTake : T.ytNotStarted);
+    }
     return false;
   }
 
@@ -560,6 +578,7 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
   function showTakeResult(wobble, outside, { canvas }, kept) {
     const items = [canvas];
     if (wobble.label === 'none') items.push(note(T.ytNoVoice));
+    else if (wobble.label === 'short') items.push(note(T.ytShort), note(T.ytWobbleNote));
     else items.push(note(WOBBLE_TEXT[wobble.label]), note(T.ytWobbleNote), note(T.ytWobbleKinds));
     if (outside.above) items.push(note(T.ytOutsideAbove), note(TEXT.overCare));
     if (outside.below) items.push(note(T.ytOutsideBelow));
@@ -581,9 +600,17 @@ export function renderStage6Yt(root, params, deps = defaultDeps) {
     controls.replaceChildren(note(TEXT.stopped), button(TEXT.again, askEarphone), button(TEXT.back, () => showControls('')));
   }
 
+  // 聞いて いる だけの ときに アプリを 隠したら、動画と タイマーを 止める（見えない 所で 流れ つづけないため）。
+  // 歌って いる 間は、マイクの 側（onHidden → showStopped）が 止める
+  function onVisibility() {
+    if (document.visibilityState === 'hidden' && !take && player) stop();
+  }
+  document.addEventListener('visibilitychange', onVisibility);
+
   load();
   return () => {
     disposed = true;
+    document.removeEventListener('visibilitychange', onVisibility);
     abort.abort();
     destroyPlayer(); // 歌っている途中の回もここでやめる（数えない）
     session.close();

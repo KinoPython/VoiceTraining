@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadYouTubeApi, createYtPlayer, ytErrorKey, defaultLoadScript } from '../../src/audio/ytPlayer.js';
 import { STAGE6_TEXT } from '../../src/data/copy.js';
 import { findBanned } from '../../src/logic/words.js';
+import { CONFIG } from '../../src/logic/config.js';
 
 // 偽の YT.Player：コンストラクタの引数を記録し、テストから events を呼べる
 function makeFakeYT({ rates = [0.25, 0.5, 0.75, 1] } = {}) {
@@ -146,6 +147,51 @@ describe('createYtPlayer', () => {
     fake.opts.events.onReady();
     const player = await p;
     expect(typeof player.play).toBe('function');
+  });
+
+  describe('準備の 時間切れ', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    test('timeoutMs までに onReady が 来ない → 先に destroy して YtTimeout。あとから 来た onReady は 無視', async () => {
+      const { p, fake } = await setup({ timeoutMs: 1000 });
+      const seen = vi.fn();
+      p.catch(seen);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(seen).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(p).rejects.toMatchObject({ name: 'YtTimeout' });
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      fake.opts.events.onReady();
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    test('timeoutMs を 渡さなければ CONFIG.stage6.yt.apiTimeoutMs', async () => {
+      const { p } = await setup();
+      const seen = vi.fn();
+      p.catch(seen);
+      await vi.advanceTimersByTimeAsync(CONFIG.stage6.yt.apiTimeoutMs - 1);
+      expect(seen).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(seen.mock.calls[0][0]).toMatchObject({ name: 'YtTimeout' });
+    });
+
+    test('間に合った onReady の あとは、時間が たっても reject も destroy も しない', async () => {
+      const { p, fake } = await setup({ timeoutMs: 1000 });
+      fake.opts.events.onReady();
+      const player = await p;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(fake.destroy).not.toHaveBeenCalled();
+      expect(typeof player.play).toBe('function');
+    });
+
+    test('早い エラーの あとに 時間切れの 時刻が 来ても、destroy は 1回だけ', async () => {
+      const { p, fake } = await setup({ timeoutMs: 1000 });
+      fake.opts.events.onError({ data: 100 });
+      await expect(p).rejects.toMatchObject({ name: 'YtPlayerError' });
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+    });
   });
 
   test('onReady の前の onError(101) は YtPlayerError で reject', async () => {

@@ -134,6 +134,6 @@ test('YouTube の読み込みを断られると、電波のない時の案内が
   await seedAndOpenList(page);
   await addYoutubeSong(page);
 
-  await expect(page.getByText('電波が ない ときは YouTube は 使えません')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('電波が 弱いか、YouTube に つながりません')).toBeVisible({ timeout: 15000 });
   expect(outside).toEqual([]);
 });

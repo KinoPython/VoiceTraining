@@ -524,9 +524,9 @@ describe('段6② 曲に YouTube を足す', () => {
     expect(root.textContent).toContain('▶'); // 一覧に戻る
   });
 
-  test('空にして保存すると消える。ytSections は残る', async () => {
+  test('空にして保存すると消える（曲ファイルの ある 曲）。ytSections は残る', async () => {
     const sec = { id: 'y1', name: '区間1', startSec: 1, endSec: 3, lastLine: [], lastRatio: 0 };
-    addSong(song({ hasFile: false, youtubeId: YT, ytSections: [sec] }));
+    addSong(song({ hasFile: true, youtubeId: YT, ytSections: [sec] }));
     const root = await open(makeDeps());
     byLabel(root, 'YouTube').click();
     const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
@@ -550,5 +550,74 @@ describe('段6② 曲に YouTube を足す', () => {
     await settle();
     expect(root.textContent).toContain('アドレスを 読み取れません');
     expect(getSong('s1').youtubeId).toBe(YT);
+  });
+
+  // 既存の 曲の YouTube 欄に アドレスを 入れて「保存」を 押す
+  async function saveAddress(root, address) {
+    byLabel(root, 'YouTube').click();
+    const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    y.value = address;
+    y.dispatchEvent(new Event('input'));
+    byLabel(root, '保存').click();
+    await settle();
+  }
+  const OTHER = 'abcdefghijk';
+  const SEC = { id: 'y1', name: '区間1', startSec: 1, endSec: 3, lastLine: [{ t: 0, midi: 60 }], lastRatio: null };
+  const CHANGE_TEXT = '動画を かえると、この 動画の 区間と 前回の 線は 消えます。かえますか？';
+  const ONLY_TEXT = 'この 曲は YouTube だけです。曲を 消す ときは『消す』を 押して ください';
+
+  test('別の 動画に かえる：たずねて「はい」なら 新しい ID に して、区間と 前回の 線を 消す', async () => {
+    addSong(song({ youtubeId: YT, ytSections: [SEC] }));
+    const deps = makeDeps({ confirm: vi.fn(() => true) });
+    const root = await open(deps);
+    await saveAddress(root, `https://www.youtube.com/watch?v=${OTHER}`);
+    expect(deps.confirm).toHaveBeenCalledWith(CHANGE_TEXT);
+    expect(getSong('s1').youtubeId).toBe(OTHER);
+    expect(getSong('s1').ytSections).toEqual([]);
+    expect(findBanned(CHANGE_TEXT)).toEqual([]);
+  });
+
+  test('別の 動画に かえる：「いいえ」なら 何も 変えない', async () => {
+    addSong(song({ youtubeId: YT, ytSections: [SEC] }));
+    const deps = makeDeps({ confirm: vi.fn(() => false) });
+    const root = await open(deps);
+    await saveAddress(root, `https://www.youtube.com/watch?v=${OTHER}`);
+    expect(deps.confirm).toHaveBeenCalledTimes(1);
+    expect(getSong('s1').youtubeId).toBe(YT);
+    expect(getSong('s1').ytSections).toEqual([SEC]);
+  });
+
+  test('同じ 動画の アドレスの まま 保存・はじめて 足す ときは たずねない', async () => {
+    addSong(song({ youtubeId: YT, ytSections: [SEC] }));
+    addSong(song({ id: 's2', title: '曲B', youtubeId: null }));
+    const deps = makeDeps({ confirm: vi.fn(() => true) });
+    const root = await open(deps);
+    await saveAddress(root, `https://youtu.be/${YT}`);
+    expect(getSong('s1').ytSections).toEqual([SEC]);
+    [...root.querySelectorAll('button')].filter((b) => b.textContent === 'YouTube')[1].click();
+    const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    y.value = `https://www.youtube.com/watch?v=${OTHER}`;
+    byLabel(root, '保存').click();
+    await settle();
+    expect(getSong('s2').youtubeId).toBe(OTHER);
+    expect(deps.confirm).not.toHaveBeenCalled();
+  });
+
+  test('YouTube だけの 曲は、アドレスを 消せない（「消す」を 押す よう 案内し、何も 変えない）', async () => {
+    addSong(song({ hasFile: false, hasVocal: false, durationSec: 0, youtubeId: YT, ytSections: [SEC] }));
+    const deps = makeDeps();
+    const root = await open(deps);
+    await saveAddress(root, '');
+    expect(root.textContent).toContain(ONLY_TEXT);
+    expect(getSong('s1').youtubeId).toBe(YT);
+    expect(getSong('s1').ytSections).toEqual([SEC]);
+    expect(findBanned(ONLY_TEXT)).toEqual([]);
+  });
+
+  test('歌声だけの ファイルが ある 曲は、アドレスを 消せる', async () => {
+    addSong(song({ hasFile: false, hasVocal: true, youtubeId: YT }));
+    const root = await open(makeDeps());
+    await saveAddress(root, '');
+    expect(getSong('s1').youtubeId).toBeNull();
   });
 });

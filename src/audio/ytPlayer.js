@@ -89,13 +89,17 @@ function loadOnce({
 // YT の状態番号 → 名前（-1 の未開始は無視する）
 const STATE_NAMES = { 1: 'playing', 2: 'paused', 0: 'ended', 3: 'buffering', 5: 'cued' };
 
-export function createYtPlayer(container, { videoId, YT, onState, onError, signal, win = window } = {}) {
+// timeoutMs までに onReady が来なければ YtTimeout で reject する（電波が弱い・止まった ときに、読み込み中の まま 待ち続けないため）
+export function createYtPlayer(container, {
+  videoId, YT, onState, onError, signal, win = window, timeoutMs = CONFIG.stage6.yt.apiTimeoutMs,
+} = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(abortError());
     let ready = false;
     let destroyed = false;
     let settledEarly = false; // onReady の前に reject した（以後のイベントは無視）
     let raw = null;
+    let timer = null; // 準備の 時間切れの タイマー
 
     // 二重に呼んでも1回だけ destroy する。失敗しても外へ投げない
     const destroyRaw = () => {
@@ -107,6 +111,7 @@ export function createYtPlayer(container, { videoId, YT, onState, onError, signa
     const failEarly = (err) => {
       if (ready || settledEarly) return;
       settledEarly = true;
+      clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       destroyRaw();
       reject(err);
@@ -150,6 +155,7 @@ export function createYtPlayer(container, { videoId, YT, onState, onError, signa
         onReady: () => {
           if (settledEarly) return; // 中止・失敗のあとに来た ready は無視
           ready = true;
+          clearTimeout(timer);
           signal?.removeEventListener('abort', onAbort);
           resolve(wrap());
         },
@@ -164,6 +170,8 @@ export function createYtPlayer(container, { videoId, YT, onState, onError, signa
         },
       },
     });
+    // ほかの 準備前の 失敗と 同じく、iframe を 片づけてから reject する
+    timer = setTimeout(() => failEarly(namedError('YtTimeout', 'YouTube の プレーヤーの 準備が 時間切れです')), timeoutMs);
   });
 }
 

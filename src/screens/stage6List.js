@@ -165,6 +165,15 @@ export function renderStage6List(root, params, deps = defaultDeps) {
     go('songYt', { id });
   }
 
+  // 保存する 中身。別の 動画に かえる ときは、前の 動画の 区間と 前回の 線が 合わなく なるので、たずねてから 消す。
+  // 「いいえ」なら null（何も 変えない）。消す（null）ときは ytSections を 残す（アドレスを また 足した とき 戻せる）
+  function ytPatch(song, youtubeId) {
+    const changing = song.youtubeId && youtubeId && youtubeId !== song.youtubeId;
+    if (!changing) return { youtubeId };
+    if (!d.confirm(T.ytConfirmChange)) return null;
+    return { youtubeId, ytSections: [] };
+  }
+
   // ---------- 既にある曲の YouTube を足す・変える・消す ----------
   function showYtForm(song) {
     const message = note('');
@@ -179,8 +188,11 @@ export function renderStage6List(root, params, deps = defaultDeps) {
         const address = yt.value().trim();
         const youtubeId = address === '' ? null : parseYoutubeId(address);
         if (address !== '' && !youtubeId) { message.textContent = T.ytBadId; return; }
-        // 消しても ytSections は残す（アドレスをまた足したとき戻せる）
-        const updated = updateSong(song.id, { youtubeId });
+        // YouTube だけの 曲で アドレスを 消すと、開く 先の ない 曲に なるので 消させない（曲ごと 消す ときは「消す」）
+        if (youtubeId === null && !song.hasFile && !song.hasVocal) { message.textContent = T.ytOnlyNoClear; return; }
+        const patch = ytPatch(song, youtubeId);
+        if (!patch) return; // 動画を かえるのを やめた：何も 変えない
+        const updated = updateSong(song.id, patch);
         if (!updated.ok) { message.textContent = T.saveFailed; return; }
         showList();
       }),

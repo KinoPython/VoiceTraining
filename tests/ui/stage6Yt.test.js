@@ -165,11 +165,65 @@ describe('段6② YouTube で聞く画面', () => {
     expect(root.textContent).toContain('YouTube を 読み込んで います…');
   });
 
+  test('読み込み中も「曲の 一覧へ」で 戻れる（読み込みの 待ちは 中止される）', async () => {
+    addSong(song());
+    let signal = null;
+    const deps = makeDeps({ loadYouTubeApi: vi.fn(({ signal: s }) => { signal = s; return new Promise(() => {}); }) });
+    const root = await open(deps);
+    await click(root, '曲の 一覧へ');
+    expect(root.textContent).toBe('曲の一覧');
+    expect(signal.aborted).toBe(true);
+  });
+
+  test('createYtPlayer が YtTimeout（プレーヤーの 準備が 時間切れ）→ ytOffline と「もどる」', async () => {
+    addSong(song());
+    const deps = makeDeps({ createYtPlayer: vi.fn(async () => { throw named('YtTimeout'); }) });
+    const root = await open(deps);
+    expect(root.textContent).toContain(STAGE6_TEXT.ytOffline);
+    expect(byLabel(root, 'もどる')).toBeTruthy();
+  });
+
+  test('「▶ 再生」で 再生を 始められなかった（play が 失敗）→ 短い 案内を 出し、止まらない', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    player.play.mockImplementation(() => { throw new Error('blocked'); });
+    await click(root, '▶ 再生');
+    expect(root.textContent).toContain('再生を 始められませんでした。もう一度 ためして ください');
+    expect(byLabel(root, 'ここを 始まりに')).toBeTruthy(); // 画面は そのまま 使える
+    // play が 失敗の Promise を 返す 場合も 同じ（くり返しでも）
+    player.play.mockImplementation(() => Promise.reject(new Error('blocked')));
+    await mark(root, 10, 12);
+    await click(root, '▶ 区間を くり返す');
+    expect(root.textContent).toContain('再生を 始められませんでした。もう一度 ためして ください');
+    expect(findBanned(STAGE6_TEXT.ytPlayFailed)).toEqual([]);
+  });
+
+  test('聞いて いる だけの ときに アプリを 隠したら、動画を 止めて タイマーも 止める', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    await click(root, '▶ 再生');
+    expect(timers.active.size).toBe(1);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    delete document.visibilityState;
+    expect(player.pause).toHaveBeenCalled();
+    expect(timers.active.size).toBe(0);
+    expect(root.querySelector('.yt-frame')).toBeTruthy();
+    go('home');
+    await settle();
+    // 離れた あとは 見張らない
+    player.pause.mockClear();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    delete document.visibilityState;
+    expect(player.pause).not.toHaveBeenCalled();
+  });
+
   test('loadYouTubeApi が YtTimeout → ytOffline と「もどる」。プレーヤーは作られない', async () => {
     addSong(song());
     const deps = makeDeps({ loadYouTubeApi: vi.fn(async () => { throw named('YtTimeout'); }) });
     const root = await open(deps);
-    expect(root.textContent).toContain('電波が ない ときは YouTube は 使えません');
+    expect(root.textContent).toContain('電波が 弱いか、YouTube に つながりません。買った 曲の ファイルは 電波なしで 使えます');
     expect(deps.createYtPlayer).not.toHaveBeenCalled();
     expect(byLabel(root, 'ここを 始まりに')).toBeUndefined();
     expect(findBanned(root.textContent)).toEqual([]);
@@ -181,7 +235,7 @@ describe('段6② YouTube で聞く画面', () => {
     addSong(song());
     const deps = makeDeps({ loadYouTubeApi: vi.fn(async () => { throw named('YtLoadError'); }) });
     const root = await open(deps);
-    expect(root.textContent).toContain('電波が ない ときは YouTube は 使えません');
+    expect(root.textContent).toContain('電波が 弱いか、YouTube に つながりません。買った 曲の ファイルは 電波なしで 使えます');
   });
 
   test('createYtPlayer が YtPlayerError(101) → ytNotEmbeddable と「もどる」', async () => {
@@ -610,6 +664,21 @@ describe('段6② YouTube で聞く画面', () => {
       expect(root.textContent).toContain('ゆれの 目安：少なめ');
     });
 
+    test('130ms ほどの 短い 音ばかり（伸ばす 所が 少ない）→ ゆれの 目安は 出さず その 案内。回は 数え、前回の 線も 残す', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      const notes = [55, 57, 59, 60, 59, 57];
+      await singTake(root, { fn: (i) => notes[Math.floor(i / 7) % notes.length] }); // 7コマ（約 140ms）ごとに 次の 音
+      expect(root.textContent).toContain('伸ばす 所が 少なかったので、ゆれの 目安は 出せませんでした');
+      expect(root.textContent).toContain(STAGE6_TEXT.ytWobbleNote);
+      expect(root.textContent).not.toContain('ゆれの 目安：');
+      expect(root.textContent).not.toContain('声が 聞こえませんでした');
+      expect(getSong('s1').ytSections[0].lastLine.length).toBeGreaterThan(0);
+      expect(findBanned(root.textContent)).toEqual([]);
+      await click(root, 'おわる');
+      expect(loadState().history[0]).toMatchObject({ tries: 1, kind: 'yt' });
+    });
+
     test('±60 セントでゆれる → 「多め」、±40 セント → 「ふつう」', async () => {
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
@@ -852,7 +921,7 @@ describe('段6② YouTube で聞く画面', () => {
       expect(mic.close).toHaveBeenCalledTimes(2);
     });
 
-    test('位置がいつまでも届かないときは、待つのをやめて「声が 聞こえませんでした」。マイクは閉じる', async () => {
+    test('位置がいつまでも届かない（再生が始まらない）ときは、待つのをやめて「再生が 始まりませんでした」。数えず、マイクは閉じる', async () => {
       addSong(song({ ytSections: [YT1] }));
       const root = await open(makeDeps());
       player.sec = 12.01;
@@ -865,9 +934,30 @@ describe('段6② YouTube で聞く画面', () => {
       expect(root.textContent).toContain('曲に 合わせて 歌って ください'); // まだ待っている
       timers.tick();
       await settle();
-      expect(root.textContent).toContain('声が 聞こえませんでした。もう一度 ためして みましょう');
+      expect(root.textContent).toContain(STAGE6_TEXT.ytNotStarted);
+      expect(root.textContent).not.toContain('声が 聞こえませんでした');
+      expect(byLabel(root, '● 歌う')).toBeTruthy(); // 区間の 画面へ 戻る
       expect(mic.close).toHaveBeenCalledTimes(1);
       expect(timers.active.size).toBe(0);
+      go('home');
+      await settle();
+      expect(loadState().history).toEqual([]);
+    });
+
+    test('流れはじめたのに 位置が いつまでも 届かない（広告など）→ 「再生が 止まったので」。数えない', async () => {
+      addSong(song({ ytSections: [YT1] }));
+      const root = await open(makeDeps());
+      player.sec = 12.01;
+      player.seekTo.mockImplementation(() => {});
+      await click(root, '● 歌う');
+      await click(root, 'つけた');
+      playerOpts.onState('playing');
+      const polls = Math.ceil(CONFIG.stage6.yt.seekWaitMs / CONFIG.stage6.yt.pollMs);
+      for (let i = 0; i < polls; i++) timers.tick();
+      await settle();
+      expect(root.textContent).toContain(STAGE6_TEXT.ytStalledTake);
+      expect(root.textContent).not.toContain('声が 聞こえませんでした');
+      expect(mic.close).toHaveBeenCalledTimes(1);
       go('home');
       await settle();
       expect(loadState().history).toEqual([]);
@@ -1044,7 +1134,8 @@ describe('段6② YouTube で聞く画面', () => {
       const texts = [STAGE6_TEXT.ytFew, STAGE6_TEXT.ytNormal, STAGE6_TEXT.ytMany, STAGE6_TEXT.ytWobbleNote,
         STAGE6_TEXT.ytWobbleKinds, STAGE6_TEXT.ytNoVoice, STAGE6_TEXT.ytOutsideAbove, STAGE6_TEXT.ytOutsideBelow,
         STAGE6_TEXT.ytToSong, STAGE6_TEXT.ytPausedTake, STAGE6_TEXT.ytNotStarted, STAGE6_TEXT.ytStalledTake,
-        STAGE6_TEXT.ytNotice, STAGE6_TEXT.ytRights, STAGE6_TEXT.ytNoReferer, STAGE6_TEXT.ytBadRange];
+        STAGE6_TEXT.ytNotice, STAGE6_TEXT.ytRights, STAGE6_TEXT.ytNoReferer, STAGE6_TEXT.ytBadRange,
+        STAGE6_TEXT.ytShort, STAGE6_TEXT.ytOffline, STAGE6_TEXT.ytPlayFailed];
       for (const t of texts) {
         expect(typeof t).toBe('string');
         expect(findBanned(t)).toEqual([]);

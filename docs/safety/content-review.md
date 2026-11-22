@@ -208,10 +208,12 @@ export const VOCAL_GUIDE_TEXT = {
   ytBadId: 'アドレスを 読み取れません',
   ytNoReferer: 'この 画面からは YouTube を 開けませんでした。この アプリを Safari などの ブラウザで 開きなおして みて ください',
   ytOther: 'YouTube を 再生できませんでした',
-  ytOffline: '電波が ない ときは YouTube は 使えません。買った 曲の ファイルは 電波なしで 使えます',
+  ytOffline: '電波が 弱いか、YouTube に つながりません。買った 曲の ファイルは 電波なしで 使えます',
   ytButton: 'YouTube',
   ytLabel: 'YouTube の アドレス（あとからでも 足せます）',
   ytSave: '保存',
+  ytConfirmChange: '動画を かえると、この 動画の 区間と 前回の 線は 消えます。かえますか？',
+  ytOnlyNoClear: 'この 曲は YouTube だけです。曲を 消す ときは『消す』を 押して ください',
   ytNotice: 'YouTube で 練習する ときは、YouTube の 公式の プレーヤーを 読み込みます。このとき YouTube に つながり、見た 動画などの 情報が YouTube（Google）の 決まりで 送られます。マイクの 声は スマホの 外に 出ません。曲の ダウンロードや 録音は しません',
   ytRights: 'YouTube の 動画は、アプリの 中の YouTube の プレーヤーで 流すだけです。動画から 曲を 取り出したり、録音したり しないで ください。歌手や レコード会社の 公式の 動画を 選ぶと 安心です',
   ytPractice: 'YouTube で 練習',
@@ -229,6 +231,8 @@ export const VOCAL_GUIDE_TEXT = {
   ytWobbleNote: '声の 高さの ゆれ方の 目安です。うまい・へたの 点数では ありません',
   ytWobbleKinds: 'ビブラートや 音の 変わり目も ふくまれます。どれが よい・わるいと いう ものでは ありません',
   ytNoVoice: '声が 聞こえませんでした。もう一度 ためして みましょう',
+  ytShort: '伸ばす 所が 少なかったので、ゆれの 目安は 出せませんでした',
+  ytPlayFailed: '再生を 始められませんでした。もう一度 ためして ください',
   ytOutsideAbove: '声の 地図より 高い 所が ありました（目安）',
   ytOutsideBelow: '声の 地図より 低い 所が ありました（目安）',
   ytToSong: 'お手本の 線で 練習する',
@@ -242,7 +246,7 @@ export const VOCAL_GUIDE_TEXT = {
 - 位置の 表示：「1:23 / 3:45」（分:秒）。区間の 端：「区間：0:10.5 〜 0:15.0」（`ytRange`）。端が 未決定の ときは「－」
 - 練習の 画面の 上：`ytNotice`（YouTube に 何が 送られるか）と `earphone`（段6①と 同じ。音量の 注意つき）。そのあと プレーヤーの 枠
 - 歌う 前の イヤホンの 確認：`TEXT.earphone`・`TEXT.earphoneWhy`・`TEXT.volume` と `SAFETY_LINES` の 1・2つ目
-- 歌ったあとの「ゆれの 目安」は `ytFew`・`ytNormal`・`ytMany`・`ytWobbleNote`・`ytWobbleKinds`、声が 無い ときは `ytNoVoice`、地図の 外は `ytOutsideAbove`（と `TEXT.overCare`）・`ytOutsideBelow`（数は 出さない）。ボタンの 前に `highCare` と `SAFETY_LINES` の 1・2つ目。点数・合格・失敗の 言葉は 使って いない
+- 歌ったあとの「ゆれの 目安」は `ytFew`・`ytNormal`・`ytMany`・`ytWobbleNote`・`ytWobbleKinds`、声が 無い ときは `ytNoVoice`、声は あったが 伸ばす 所が 少なく 測れない ときは `ytShort` と `ytWobbleNote`（回は 数える）、地図の 外は `ytOutsideAbove`（と `TEXT.overCare`）・`ytOutsideBelow`（数は 出さない）。ボタンの 前に `highCare` と `SAFETY_LINES` の 1・2つ目。点数・合格・失敗の 言葉は 使って いない
 - 曲を 足す 画面（`stage6List.js` の `showForm`・`showYtForm`）：アドレスの 欄の 下に `ytRights`、その 下に `ytNotice`
 
 ### 指摘と直したこと（段6②）
