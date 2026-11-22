@@ -8,6 +8,7 @@ import {
   loadState, addSong, updateSong, removeSong, getSong, newId, requestPersist,
 } from '../storage/store.js';
 import { putFile, getFile, removeSongFiles, isReadFailure } from '../storage/songFiles.js';
+import { parseYoutubeId } from '../logic/youtubeUrl.js';
 import { extractLine, toNotes, keyAdvice, mixToMono } from '../logic/songLine.js';
 import { getAudioContext } from '../audio/tone.js';
 
@@ -27,7 +28,13 @@ const isAbort = (e) => e && e.name === 'AbortError';
 const isPresent = (v) => v !== null && !isReadFailure(v);
 
 // 曲の印：🎵 曲ファイル・🎤 歌声だけ
-const marksOf = (song) => `${song.hasFile ? '🎵' : ''}${song.hasVocal ? '🎤' : ''}`;
+const marksOf = (song) => `${song.hasFile ? '🎵' : ''}${song.hasVocal ? '🎤' : ''}${song.youtubeId ? '▶' : ''}`;
+
+// YouTube の入力欄に入れる、いまの動画のアドレス（ID から作りなおす）
+const watchUrl = (id) => `https://www.youtube.com/watch?v=${id}`;
+
+// 開く先：曲ファイルか歌声だけがあれば今までの曲の画面。YouTube だけなら YouTube の曲の画面
+const openSong = (song) => (!song.hasFile && !song.hasVocal && song.youtubeId ? go('songYt', { id: song.id }) : go('song', { id: song.id }));
 
 // 2つの長さが近いか（ちがいすぎると別の曲かもしれない。止めずに知らせるだけ）
 const lengthsDiffer = (a, b) => Math.abs(a - b) >= CONFIG.stage6.lengthMismatchSec;
@@ -56,10 +63,10 @@ export function renderStage6List(root, params, deps = defaultDeps) {
   function songRow(song) {
     const card = document.createElement('div');
     card.className = 'card';
-    const open = button(song.title, () => go('song', { id: song.id }));
+    const open = button(song.title, () => openSong(song));
     const marks = note(marksOf(song));
     const status = note('');
-    card.append(open, marks, status, button(T.refileButton, () => showRefile(song)), button(T.remove, () => confirmRemove(song)));
+    card.append(open, marks, status, button(T.ytButton, () => showYtForm(song)), button(T.refileButton, () => showRefile(song)), button(T.remove, () => confirmRemove(song)));
     markMissingFiles(song, status);
     return card;
   }
@@ -107,6 +114,8 @@ export function renderStage6List(root, params, deps = defaultDeps) {
     titleInput.setAttribute('aria-label', T.titleLabel);
     titleInput.addEventListener('input', () => { title = titleInput.value; });
 
+    const yt = ytInput('');
+
     root.replaceChildren(
       heading(T.add),
       note(T.rights),
@@ -114,11 +123,63 @@ export function renderStage6List(root, params, deps = defaultDeps) {
       ...picker(picked, 'file', T.pickFile),
       ...picker(picked, 'vocal', T.pickVocal),
       button(T.guide, () => go('vocalGuide')),
+      yt.input,
+      note(T.ytNotice),
       message,
       button(T.submit, () => {
         if (title.trim() === '') { message.textContent = T.needTitle; return; }
-        if (!picked.file && !picked.vocal) { message.textContent = T.needFile; return; }
-        addNew(title.trim(), picked);
+        const address = yt.value().trim();
+        const youtubeId = address === '' ? null : parseYoutubeId(address);
+        // 読み取れないアドレスは、ファイルを選んでいても足さない（まちがいに気づけるように）
+        if (address !== '' && !youtubeId) { message.textContent = T.ytBadId; return; }
+        if (!picked.file && !picked.vocal) {
+          if (!youtubeId) { message.textContent = T.needFile; return; }
+          addYoutubeOnly(title.trim(), youtubeId);
+          return;
+        }
+        addNew(title.trim(), picked, youtubeId);
+      }),
+      button(T.cancel, showList),
+    );
+  }
+
+  // YouTube のアドレスを入れる欄
+  function ytInput(initial) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = T.ytLabel;
+    input.setAttribute('aria-label', T.ytLabel);
+    input.value = initial;
+    return { input, value: () => input.value };
+  }
+
+  // YouTube だけの曲：ファイルは読まない・保存しない。記録だけ足して YouTube の曲の画面へ
+  function addYoutubeOnly(title, youtubeId) {
+    const id = newId();
+    const added = addSong({
+      id, title, hasFile: false, hasVocal: false, durationSec: 0, sections: [], keyAdvice: 0, youtubeId, ytSections: [],
+    });
+    if (!added.ok) { showError(T.saveFailed, showForm); return; }
+    go('songYt', { id });
+  }
+
+  // ---------- 既にある曲の YouTube を足す・変える・消す ----------
+  function showYtForm(song) {
+    const message = note('');
+    const yt = ytInput(song.youtubeId ? watchUrl(song.youtubeId) : '');
+    root.replaceChildren(
+      heading(`${song.title}：${T.ytButton}`),
+      yt.input,
+      note(T.ytNotice),
+      message,
+      button(T.ytSave, () => {
+        const address = yt.value().trim();
+        const youtubeId = address === '' ? null : parseYoutubeId(address);
+        if (address !== '' && !youtubeId) { message.textContent = T.ytBadId; return; }
+        // 消しても ytSections は残す（アドレスをまた足したとき戻せる）
+        const updated = updateSong(song.id, { youtubeId });
+        if (!updated.ok) { message.textContent = T.saveFailed; return; }
+        showList();
       }),
       button(T.cancel, showList),
     );
@@ -229,7 +290,7 @@ export function renderStage6List(root, params, deps = defaultDeps) {
   }
 
   // ---------- 追加の本体 ----------
-  async function addNew(title, picked) {
+  async function addNew(title, picked, youtubeId) {
     controller = new AbortController();
     const { signal } = controller;
     const progress = showProgress(T.add);
@@ -249,6 +310,7 @@ export function renderStage6List(root, params, deps = defaultDeps) {
     const added = addSong({
       id, title, hasFile: Boolean(picked.file), hasVocal: Boolean(picked.vocal), durationSec: built.durationSec, sections: [],
       keyAdvice: keyAdvice(toNotes(built.line), loadState().range),
+      youtubeId, ytSections: [],
     });
     if (!added.ok) {
       await d.removeSongFiles(id);

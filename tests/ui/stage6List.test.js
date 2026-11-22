@@ -34,6 +34,7 @@ async function open(deps, hash = '#stage6') {
   history.replaceState(null, '', location.pathname);
   register('stage6', (root, params) => renderStage6List(root, params, deps));
   register('song', (root) => { root.textContent = '曲の画面'; });
+  register('songYt', (root) => { root.textContent = 'YouTube の曲の画面'; });
   register('vocalGuide', (root) => { root.textContent = '作り方'; });
   register('home', (root) => { root.textContent = 'ホーム'; });
   const root = document.createElement('div');
@@ -399,5 +400,134 @@ describe('段6 保存の失敗・置き去りのファイル・メモリ', () =>
     await settle();
     expect(fileAlive).toBe(false);
     expect(loadState().songs[0].durationSec).toBe(100);
+  });
+});
+
+describe('段6② 曲に YouTube を足す', () => {
+  beforeEach(() => localStorage.clear());
+
+  const YT = 'dQw4w9WgXcQ';
+  const YT_URL = `https://www.youtube.com/watch?v=${YT}`;
+  const ytLabel = 'YouTube の アドレス（あとからでも 足せます）';
+
+  // 追加画面を開いて、題とアドレスを入れて「追加する」を押す
+  async function addWithAddress(root, address, kinds = [], title = 'テスト曲') {
+    byLabel(root, '＋ 曲を 足す').click();
+    const t = root.querySelector('input[type="text"]');
+    t.value = title;
+    t.dispatchEvent(new Event('input'));
+    const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    y.value = address;
+    y.dispatchEvent(new Event('input'));
+    for (const k of kinds) pick(root, k);
+    byLabel(root, '追加する').click();
+    await settle();
+  }
+
+  test('追加画面に YouTube の入力欄と ytNotice が出て、禁止の言葉がない', async () => {
+    const root = await open(makeDeps());
+    byLabel(root, '＋ 曲を 足す').click();
+    expect(root.querySelector(`input[aria-label="${ytLabel}"]`)).not.toBeNull();
+    expect(root.textContent).toContain('YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません');
+    expect(findBanned(root.textContent)).toEqual([]);
+  });
+
+  test('アドレスだけで追加：youtubeId つき・ファイル保存なし・songYt へ', async () => {
+    const deps = makeDeps();
+    const root = await open(deps);
+    await addWithAddress(root, YT_URL);
+    const [s] = loadState().songs;
+    expect(s).toMatchObject({ title: 'テスト曲', hasFile: false, hasVocal: false, durationSec: 0, youtubeId: YT });
+    expect(deps.putFile).not.toHaveBeenCalled();
+    expect(deps.decode).not.toHaveBeenCalled();
+    expect(deps.extractLine).not.toHaveBeenCalled();
+    expect(location.hash).toBe(`#songYt?id=${s.id}`);
+  });
+
+  test('一覧に ▶ が出て、開くと songYt へ', async () => {
+    addSong(song({ hasFile: false, youtubeId: YT, durationSec: 0 }));
+    const root = await open(makeDeps());
+    expect(root.textContent).toContain('▶');
+    byLabel(root, '曲A').click();
+    await settle();
+    expect(location.hash).toBe('#songYt?id=s1');
+  });
+
+  test('読み取れないアドレスは ytBadId で、曲は増えない（ファイルを選んでいても）', async () => {
+    const deps = makeDeps();
+    const root = await open(deps);
+    await addWithAddress(root, 'https://example.com/abc', ['file']);
+    expect(root.textContent).toContain('アドレスを 読み取れません');
+    expect(loadState().songs).toEqual([]);
+    expect(deps.putFile).not.toHaveBeenCalled();
+  });
+
+  test('何も入れなければ今までの案内', async () => {
+    const root = await open(makeDeps());
+    await addWithAddress(root, '');
+    expect(root.textContent).toContain('ファイルを 1つ 以上 選んで ください');
+    expect(loadState().songs).toEqual([]);
+  });
+
+  test('曲ファイル＋YouTube：youtubeId も入り、song へ開く', async () => {
+    const root = await open(makeDeps());
+    await addWithAddress(root, YT_URL, ['file']);
+    const [s] = loadState().songs;
+    expect(s).toMatchObject({ hasFile: true, youtubeId: YT });
+    byLabel(root, '曲の 画面へ').click();
+    await settle();
+    expect(location.hash).toBe(`#song?id=${s.id}`);
+  });
+
+  test('ファイルも YouTube もある曲を開くと song へ', async () => {
+    addSong(song({ youtubeId: YT }));
+    const root = await open(makeDeps());
+    expect(root.textContent).toContain('▶');
+    byLabel(root, '曲A').click();
+    await settle();
+    expect(location.hash).toBe('#song?id=s1');
+  });
+
+  test('既存の曲に YouTube を足す', async () => {
+    addSong(song());
+    const root = await open(makeDeps());
+    byLabel(root, 'YouTube').click();
+    expect(root.textContent).toContain('曲A');
+    const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    expect(y.value).toBe('');
+    y.value = YT_URL;
+    y.dispatchEvent(new Event('input'));
+    byLabel(root, '保存').click();
+    await settle();
+    expect(getSong('s1').youtubeId).toBe(YT);
+    expect(root.textContent).toContain('▶'); // 一覧に戻る
+  });
+
+  test('空にして保存すると消える。ytSections は残る', async () => {
+    const sec = { id: 'y1', name: '区間1', startSec: 1, endSec: 3, lastLine: [], lastRatio: 0 };
+    addSong(song({ hasFile: false, youtubeId: YT, ytSections: [sec] }));
+    const root = await open(makeDeps());
+    byLabel(root, 'YouTube').click();
+    const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    expect(y.value).toBe(YT_URL); // いまのアドレスが入っている
+    y.value = '';
+    y.dispatchEvent(new Event('input'));
+    byLabel(root, '保存').click();
+    await settle();
+    expect(getSong('s1').youtubeId).toBeNull();
+    expect(getSong('s1').ytSections).toHaveLength(1);
+  });
+
+  test('不正なアドレスは ytBadId で、保存しない', async () => {
+    addSong(song({ youtubeId: YT }));
+    const root = await open(makeDeps());
+    byLabel(root, 'YouTube').click();
+    const y = root.querySelector(`input[aria-label="${ytLabel}"]`);
+    y.value = 'ほげ';
+    y.dispatchEvent(new Event('input'));
+    byLabel(root, '保存').click();
+    await settle();
+    expect(root.textContent).toContain('アドレスを 読み取れません');
+    expect(getSong('s1').youtubeId).toBe(YT);
   });
 });

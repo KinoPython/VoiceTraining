@@ -61,5 +61,8 @@ export const STAGE6_TEXT = {
   ytOther: 'YouTube を 再生できませんでした',
   ytOffline: '電波が ない ときは YouTube は 使えません。買った 曲の ファイルは 電波なしで 使えます',
   ytEarphone: '曲に 合わせて 歌う ときは、イヤホンが 必要です',
+  ytButton: 'YouTube',
+  ytLabel: 'YouTube の アドレス（あとからでも 足せます）',
+  ytSave: '保存',
   ytNotice: 'YouTube の プレーヤーを 読み込みます（YouTube に 接続します）。声は スマホの 外に 出ません。曲の ダウンロードは しません',
 };
